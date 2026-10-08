@@ -1,6 +1,6 @@
 # CLAUDE.md — instructions for Claude Code in this repo
 
-Read **SPEC.md** (what to build) and **PLAN.md** (order and acceptance criteria) before doing anything. Check **PROGRESS.md** for where we are.
+Read **HANDOFF.md** first (current status and how this setup works). Then read **SPEC.md** (what to build) and **PLAN.md** (order and acceptance criteria) before doing anything. Check **PROGRESS.md** for where we are.
 
 ## Hard rules (breaking one can disqualify the project)
 1. The agent never awards, recommends awarding, or accuses. Memo wording is "warrants review".
