@@ -1,0 +1,26 @@
+# Python / uv
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+
+# Node (borrowed Filesystem MCP server)
+node_modules/
+
+# Flagbox runtime output (never committed; data is downloaded by setup)
+data/
+logs/
+drafts/
+filed/
+*.sqlite
+*.sqlite-journal
+
+# Local settings
+.env
+
+# OS / editors
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/

@@ -1,0 +1,47 @@
+[project]
+name = "flagbox"
+version = "0.1.0"
+description = "Sourced red flags for public tenders. The committee decides."
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    # Pinned below 2: langchain-mcp-adapters 0.3.2 requires mcp<2 (see SPEC.md D4).
+    "mcp==1.30.0",
+    "langchain-mcp-adapters==0.3.2",
+    "langgraph==1.2.14",
+    "langchain-ollama==1.1.0",
+    "pydantic>=2.12",
+]
+
+[project.scripts]
+flagbox = "flagbox.cli:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "ruff>=0.6",
+    "pyright>=1.1.380",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/flagbox"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+
+[tool.pyright]
+include = ["src", "tests"]
+typeCheckingMode = "basic"
+pythonVersion = "3.12"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
