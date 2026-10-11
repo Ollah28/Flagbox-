@@ -104,6 +104,9 @@ def _process_rows(
     tender_value = _dict(tender.get("value"))
     buyer_key, buyer_raw_id, buyer_name, buyer_norm = _buyer_row(release)
     tenderers = tender.get("numberOfTenderers")
+    n_tenderers = (
+        tenderers if isinstance(tenderers, int) and not isinstance(tenderers, bool) else None
+    )
 
     rows: dict[str, list[tuple[Any, ...]]] = {
         "buyers": [(buyer_key, buyer_raw_id, buyer_name, buyer_norm)],
@@ -117,7 +120,7 @@ def _process_rows(
                 _text(tender.get("procurementMethod")),
                 _text(tender.get("procurementMethodDetails")),
                 _text(tender.get("mainProcurementCategory")),
-                tenderers if isinstance(tenderers, int) and not isinstance(tenderers, bool) else None,
+                n_tenderers,
                 _text(period.get("startDate")),
                 _text(period.get("endDate")),
                 _text(tender.get("status")),
@@ -171,7 +174,7 @@ def _process_rows(
 
 _INSERTS = {
     "buyers": "INSERT OR IGNORE INTO buyers VALUES (?, ?, ?, ?)",
-    "processes": "INSERT OR IGNORE INTO processes VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    "processes": "INSERT OR IGNORE INTO processes VALUES (" + ", ".join("?" * 15) + ")",
     "awards": "INSERT OR IGNORE INTO awards VALUES (?, ?, ?, ?, ?, ?)",
     "award_suppliers": "INSERT OR IGNORE INTO award_suppliers VALUES (?, ?, ?, ?, ?, ?)",
     "contracts": "INSERT OR IGNORE INTO contracts VALUES (?, ?, ?, ?, ?)",
@@ -235,7 +238,8 @@ def ingest(data_dir: Path, today: date | None = None) -> IngestReport:
                 connection.executemany(sql, batch[table])
             connection.commit()
 
-        for table in ("source_files", "buyers", "processes", "awards", "award_suppliers", "contracts"):
+        tables = ("source_files", "buyers", "processes", "awards", "award_suppliers", "contracts")
+        for table in tables:
             count = connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]  # fixed names
             report.rows[table] = count
     finally:

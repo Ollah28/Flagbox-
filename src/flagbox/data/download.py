@@ -58,7 +58,8 @@ def count_lines(path: Path) -> int:
 
 
 def http_fetch(url: str, destination: Path) -> None:
-    request = urllib.request.Request(url, headers={"User-Agent": "flagbox/0.1 (open-data research)"})
+    headers = {"User-Agent": "flagbox/0.1 (open-data research)"}
+    request = urllib.request.Request(url, headers=headers)
     with urllib.request.urlopen(request, timeout=TIMEOUT_SECONDS) as response:
         with destination.open("wb") as out:
             shutil.copyfileobj(response, out, CHUNK_BYTES)
