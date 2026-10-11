@@ -93,12 +93,12 @@ Spike S1 measures field coverage. We ship the **top 3 runnable** in this prefere
 
 | Pref | Indicator | Fires when | Needs field | Status |
 |---|---|---|---|---|
-| 1 | `repeat_winner` | Supplier has ≥ N awards **and** ≥ X% of the buyer's award value in range | `awards.suppliers`, `awards.value` | Likely OK (79,943 suppliers, VERIFIED) |
-| 2 | `value_outlier` | Award value > Q3 + k×IQR among the buyer's awards in the same category | `awards.value`, category | Value VERIFIED present; category UNKNOWN |
-| 3 | `single_bidder` | `numberOfTenderers == 1` on a competitive method | `tender.numberOfTenderers`, `procurementMethod` | UNKNOWN |
-| 3 | `non_competitive_share` | Value share via direct or limited methods > Y% | `tender.procurementMethod(Details)` | UNKNOWN |
-| 3 | `short_window` | Tender open < D days | `tender.tenderPeriod` | UNKNOWN |
-| 3 | `date_sequence` | Contract signed before tender closed, or award dated before tender start | dates | UNKNOWN |
+| 1 | `repeat_winner` | Supplier has ≥ N awards **and** ≥ X% of the buyer's award value in range | `awards.suppliers`, `awards.value` | **Runnable**, 80% joint coverage (VERIFIED). A2 thresholds never fire on real data: see D23 |
+| 2 | `value_outlier` | Award value > Q3 + k×IQR among the buyer's awards in the same category | `awards.value`, category | **Runnable**, 99% joint coverage (VERIFIED) |
+| 3 | `single_bidder` | `numberOfTenderers == 1` on a competitive method | `tender.numberOfTenderers`, `procurementMethod` | **Not runnable**: `numberOfTenderers` is 0% populated (VERIFIED) |
+| 3 | `non_competitive_share` | Value share via direct or limited methods > Y% | `tender.procurementMethod(Details)` | **Runnable**, 99% joint coverage on `procurementMethod` and value (VERIFIED) |
+| 3 | `short_window` | Tender open < D days | `tender.tenderPeriod` | **Not usable**: 91% of windows are under 7 days, so `startDate` is not an opening date (VERIFIED) |
+| 3 | `date_sequence` | Contract signed before tender closed, or award dated before tender start | dates | Runnable (81%) but noisy: a hit appears at 219 of 240 buyers. Kept as the rehearsal candidate |
 
 The remaining candidates are listed in the README as "next indicators". One of them is a ready-made **live-review rehearsal**.
 
@@ -108,11 +108,11 @@ The remaining candidates are listed in the README as "next indicators". One of t
 
 ### 3.3 Verifier (deterministic; this is what makes the output defensible)
 
-**How claims are built.** Indicator tools return `hits[]`. Each hit has a `hit_id`, OCIDs, `source_refs`, `source_fields`, and a **`claim_text` produced by the tool from a fixed template**, for example "Supplier S-102 received 6 of 41 awards (31% of award value) from this buyer, 2023–2025." The model never writes a number or a supplier name. `record_finding` accepts only `hit_id`, `severity` (low/med/high), and a short `rationale`.
+**How claims are built.** Indicator tools return `hits[]`. Each hit has a `hit_id`, OCIDs, `source_refs`, `source_fields`, and a **`claim_text` produced by the tool from a fixed template**, for example "Supplier S-102 received 6 of 41 awards (31% of award value) from this buyer, 2023–2025." The model never writes a number or a supplier name. `record_finding` accepts only `hit_id`, `severity` (low/medium/high), and a **`reason_code`** chosen from a closed list. The wording of each reason is fixed text kept in the indicator's own file, and each reason has a rule that decides from the hit whether it is true (for example "all within a single tender process" applies only when the hit's process count is 1). The model writes no explanation (D31).
 
 A finding or summary sentence is filed only if:
 1. The `hit_id` exists in the output of a logged tool call from **this run**. The OCIDs, `claim_text` and `source_refs` are copied from that call by code. A finding can cite several calls, for example the hit plus a `peer_baseline` call.
-2. The rationale contains **no digits and no supplier names or IDs**. It checks against the run's supplier list.
+2. The explanation contains **no digits and no supplier names or IDs**. For findings this holds by construction (the text is fixed, D31) and is re-checked on the fixed text by a test; the same check, against the run's supplier list, guards the free text that remains (plan skip reasons and the summary paragraph).
 3. The summary paragraph may only mention a supplier or OCID that belongs to a recorded finding, and its numbers must exactly match a filed `claim_text`.
 4. It contains no banned words (`corrupt*, fraud*, guilty, stole, steal*, illegal, criminal, bribe*`). The wording uses "warrants review".
 5. It contains no withheld name (§6.2).
@@ -139,12 +139,9 @@ A finding or summary sentence is filed only if:
 
 **Snapshot.** Ingest the 2023–2025 files once. Record each file's URL, SHA-256 and download date in `data/MANIFEST.json`. Evals run on this frozen snapshot.
 
-**No live tenders.** Ingest excludes any process where:
-- `tender.status` is `planning`, `active` or missing *with* no award;
-- `tenderPeriod.endDate` ≥ **today**;
-- or the award status is `pending`.
+**No live tenders (revised by D20).** `tender.status` and `award.status` are never populated in the 2023–2025 files (VERIFIED, `docs/spikes.md`), so ingest keeps a process only if it has at least one award **and** `tenderPeriod.endDate` is missing or earlier than **today**. It excludes the rest, counted by reason (`no_award`, `end_date_not_past`, `end_date_unreadable`).
 
-The exclusion count is logged. The same filter applies to every input.
+The exclusion counts are logged. The same filter applies to every input.
 
 **Inputs.** `flagbox ingest` supports the PPRA JSONL format, plus the organisers' test-tender format once its shape is known (spike S5). Generic merging of any OCDS package is v2.
 
@@ -155,14 +152,14 @@ The exclusion count is logged. The same filter applies to every input.
 | Table | Key fields | Notes |
 |---|---|---|
 | `source_files` | `file_id` PK, `url`, `sha256`, `downloaded_at`, `line_count` | Provenance |
-| `processes` | `ocid` PK, `file_id`, `line_no`, `buyer_key`, `title`, `method`, `method_details`, `category`, `n_tenderers` NULL, `period_start/end` NULL, `status`, `tender_value` NULL, `currency` NULL | One row per process |
+| `processes` | `ocid` PK, `file_id`, `line_no`, `buyer_key`, `title`, `method`, `method_details`, `category`, `n_tenderers` NULL, `period_start/end` NULL, `status`, `tender_value` NULL, `currency` NULL, `portal_url` NULL (D25) | One row per process |
 | `buyers` | `buyer_key` PK, `raw_id` NULL, `name`, `name_norm` | Key = raw ID, else `name:`+normalised name (ASSUMPTION) |
 | `awards` | (`ocid`,`award_id`) PK, `date`, `amount`, `currency`, `status` | |
 | `award_suppliers` | `ocid`, `award_id`, `supplier_key`, `raw_id`, `display_name`, `name_withheld` BOOL | §6.2 |
 | `contracts` | `contract_id`, `ocid`, `award_id`, `date_signed`, `amount` | |
 | `runs` | `run_id` UUID PK, `buyer_key`, range, `model`, `num_ctx`, times, `status`, `tool_calls`, `tokens_in/out` | |
 | `hits` | `hit_id` PK, `run_id`, `tool_call_id`, `indicator`, `claim_text`, `ocids` JSON, `source_refs` JSON, `source_fields` JSON | Written by indicator tools |
-| `findings` | `finding_id` PK, `hit_id` FK, `severity`, `rationale`, `status` (kept/dismissed/rejected), `reason` | |
+| `findings` | `finding_id` PK, `hit_id` FK, `severity`, `reason_code`, `rationale` (the fixed text for that code), `status` (kept/dismissed/rejected), `reason` (why rejected) | |
 | `approvals` | `run_id` PK, `approver_name`, `os_user`, `decision`, `note`, `memo_sha256`, `decided_at` | |
 
 Raw JSON is not stored. No migrations are needed: `flagbox reset` rebuilds from the files.
@@ -205,7 +202,7 @@ Raw JSON is not stored. No migrations are needed: `flagbox reset` rebuilds from 
 | `peer_baseline` | R | `hit_id` | The same metric for comparable buyers in the same category, with a sample size |
 | `process_detail` | R | `ocid` | Method, dates, values, tenderer count, supplier key, `source_ref` |
 | `supplier_footprint` | R | `supplier_key` | Exact-key awards at other buyers, as a hit with `claim_text`. Name-only matches are labelled unconfirmed |
-| `record_finding` | W | `hit_id`, `severity`, `rationale` | `finding_id` or a structured rejection |
+| `record_finding` | W | `hit_id`, `severity`, `reason_code` | `finding_id` or a structured rejection |
 | `dismiss_hit` | W | `hit_id`, `reason` | Logged dismissal |
 | `draft_memo` | W | `run_id` (UUID-validated) | Draft path plus SHA-256 |
 
@@ -227,7 +224,7 @@ Raw JSON is not stored. No migrations are needed: `flagbox reset` rebuilds from 
 
 | Threat | Mitigation |
 |---|---|
-| Injected instructions in record text steer the agent or the claim | Claims come from templates, not the model; rationale has no names or digits; record text is returned in quoted data fields; the model has no shell or network tools; eval E10 tests it |
+| Injected instructions in record text steer the agent or the claim | Claims come from templates and explanations from a fixed list, not the model; record text is returned in quoted data fields; the model has no shell or network tools; eval E10 tests it |
 | Model invents OCIDs or numbers | Verifier rules 1 and 3: everything is copied by code from logged tool output |
 | Model lowers thresholds until something fires | Parameters are locked in config (§3.2) |
 | An approved memo is swapped before filing | Hash shown to the approver, approval bound to that hash, exactly those bytes filed; no-overwrite check |
@@ -244,7 +241,7 @@ No secrets are needed at $0. `.env.example` contains: `OLLAMA_HOST`, `FLAGBOX_MO
 | Data | Handling |
 |---|---|
 | `parties[].contactPoint` | Dropped on ingest; never stored, logged or sent to the model |
-| Supplier names | Shown **only** with an incorporation marker: `Ltd`, `Limited`, `PLC`, `LLP`, `Inc`, `Corporation`, `Company Limited`, `Co. Ltd`. Otherwise `display_name = "Supplier <key> (name withheld)"`. The withholding applies everywhere: database display field, tool outputs to the model, logs and memo |
+| Supplier names | Shown **only** with an incorporation marker: `Ltd`, `Limited`, `PLC`, `LLP`, `Inc`, `Corporation`, `Company Limited`, `Co. Ltd`. A name that contains `@` or a run of 7+ digits (an email or phone number typed into the name field, VERIFIED in the data) is withheld even with a marker. Otherwise `display_name = "Supplier <key> (name withheld)"`. The withholding applies everywhere: database display field, tool outputs to the model, logs and memo |
 | Approver | Typed name plus OS username, stored locally (required by the brief) |
 
 Data stays local; the user deletes `data/` and `logs/`. There are no accounts. Frame: Kenya Data Protection Act 2019; personal data is excluded by design. Code licence: MIT.
@@ -294,7 +291,7 @@ These are ASSUMPTIONS until S3 measures them. Context grows each turn, so prompt
 
 **Deterministic tests (no model, run in CI, must be 100%):**
 - indicator fixtures and claim templates
-- the verifier: fake `hit_id`, a digit in the rationale, a supplier name in the rationale, a summary with an uncited supplier, banned words
+- the verifier: fake `hit_id`, a reason code that is not true for the hit, free text in place of a code, a summary with an uncited supplier, banned words
 - redaction
 - live-tender filter
 - UUID and path checks
@@ -391,13 +388,25 @@ These are ASSUMPTIONS until S3 measures them. Context grows each turn, so prompt
 | D10 | Approval UI | Terminal / web | Terminal; Streamlit only if everything else is done by Wed 14 | Easy |
 | D11 | Reach | Counties / all Kenya / 9 countries | All Kenyan buyers; country seam | Easy |
 | D12 | Bid docs | Build / seam | Seam only | Easy |
-| D13 | Claim authorship | Model writes claims / tool templates | **Tool templates**; the model writes only a rationale with no digits or names | Med |
+| D13 | Claim authorship | Model writes claims / tool templates | **Tool templates**; the model writes no claim (and, since D31, no explanation either) | Med |
 | D14 | Name display | Company-word heuristic / incorporation markers only | **Incorporation markers only**: errs toward privacy | Easy |
 | D15 | Logging location | Per-server / client wrapper | **Client wrapper**: covers the borrowed server and creates `tool_call_id` | Med |
 | D16 | Filing | Model calls `write_file` / code calls it | **Code**, hash-bound, no-overwrite check | Easy |
 | D17 | Indicator count | 4–5 / 3 | **3** plus rehearsal candidates | Easy |
 | D18 | Buyer choice | In-graph interrupt / CLI before graph | **CLI**: one interrupt only | Easy |
 | D19 | Judge run without download | None / replay | **Labelled replay** of a recorded real run | Easy |
+| D20 | Live-tender filter | SPEC §4 status rules / award + end-date rule | **Keep a process only if it has ≥ 1 award and `tenderPeriod.endDate` is missing or before today.** Status fields are 100% empty in all 148,777 processes, so the status rules cannot fire. An unreadable end date counts as not past (excluded). Stricter than the original: it drops the 91,195 award-less processes, which no indicator uses. Agreed 11 Oct | Easy |
+| D21 | Supplier key | Raw ID, else readable name / raw ID, else hashed name | **Raw ID, else `name:` + first 12 hex of SHA-256 of the normalised name.** A readable name-based key would leak a withheld name (§6.2) through the key and the display text | Easy |
+| D22 | Date for `--from/--to` | `tenderPeriod.startDate` / `endDate` / `contract.dateSigned` / `contractPeriod.startDate` | **`tenderPeriod.endDate` (tender closing date)**: plausible in 99.9% of kept processes, against 81% for `dateSigned` and 75% for `contractPeriod.startDate`; its years line up with signing dates. `startDate` is not a real opening date. Processes with no usable end date are left out of ranged queries and counted. | Easy |
+| D23 | The 3 indicators (S1 result) | Top 3 runnable in SPEC 3.2 preference order | **`repeat_winner`, `value_outlier`, `non_competitive_share`**, each above the 60% joint-coverage rule. `single_bidder` (0% `numberOfTenderers`) and `short_window` (91% of windows under 7 days) are out; `date_sequence` is the rehearsal candidate. **`repeat_winner` parameters decided 11 Oct: N = 3 wins, X = 10% of value** (replaces the A2 placeholders, which fire at 1 of 240 buyers; 10% fires at 6). It will rarely fire; a count-based test goes on the README's "next indicators" list. Supplier IDs may split one company into several IDs, which is stated as a limit. Parameters live in `config/indicators.yaml` with a `rationale:` line, never from the model | Easy |
+| D24 | Eval buyers | 11 candidates in `docs/data_coverage.md` | **Kenya Literature Bureau (5015, 266 processes), Bungoma County Government (5223, 451), National Transport and Safety Authority (5144, 871), Kenya Maritime Authority (5174, 169), Nairobi County Government (5241, 64).** Mixed county and national; three have 300 processes or fewer. KLB has repeat-winner and non-competitive signals; Bungoma has a high non-competitive share; NTSA is the largest, for timing; Kenya Maritime is small with few signals, to test "nothing found"; Nairobi is thin, for `widen_range`. Name variants such as "County Assembly Of Bungoma" are separate buyers (A4) | Easy |
+| D26 | How indicator hits are identified and counted (M2.1) | Random IDs stored in a `hits` table / deterministic IDs | **Deterministic `hit_id`**: `RW-` + first 10 hex of SHA-256 of indicator, buyer, range, supplier and thresholds. The same question always gives the same ID; nothing is written to the snapshot (it is opened read-only). The `hits` and `findings` tables belong to run state and arrive with M2.3. A repeat-winner "win" is an **award**, but each hit also states how many **tender processes** those awards fall in, in its claim text, because lots of one tender are not a pattern over time (seen at Kenya Literature Bureau). An award with several suppliers splits its value evenly between them | Easy |
+| D31 | Finding explanations (M2.4 review) | Free-text rationale / closed list / limited vocabulary | **Closed list of fixed reasons per indicator (option b).** The real 8B run wrote "a supplier received a significant share of awards from this buyer in a short period": the data showed one tender process, so "significant" and "short period" were the model's own, unsourced wording, and the verifier cannot catch vague claims. Now the model picks a `reason_code`; the wording is fixed text in the indicator file; each reason has an `applies(hit)` rule so it can only be chosen when true for that hit; the stored `rationale` is that text. The model still makes real choices (severity and which reason fits), but writes no sentence. Cost: less nuance; the 8B model often picks the generic reason (`value_share_at_threshold`) over the more informative one (`lots_of_one_tender`). Possible later: allow several codes per finding. Plan skip reasons stay free text, guarded by the wording rules | Easy |
+| D30 | How the model is given tools (M2.4) | Model passes buyer and dates / harness fixes them | **The harness fixes `buyer_key`, `date_from` and `date_to`** and hides them from the model's tool schema, so the model calls `repeat_winner` with no arguments and cannot drift to another buyer or mistype a date (SPEC 3.1: the officer chose the buyer before the agent started). Tools are loaded with `langchain-mcp-adapters` through the logging wrapper, then bound. The model is offered only the planned indicator tools and `record_finding`. Limits as SPEC section 7: 25 tool calls and 15 min for investigation, 30 min per run, an Ollama call 180 s with one retry, a failed tool call retried once then logged as a gap. A finding may be repaired twice; a 4th attempt for the same hit is not sent (a `refused_call` record is logged). **The tool menu is narrowed per turn:** `record_finding` is offered only after some tool has returned a hit, and an indicator already run is refused if called again. Found in the first real run: with zero hits the 8B model ignored the prompt and invented hit IDs (the verifier refused every one; prompting alone did not stop it). **Two wasted tool calls in a row** (refused, repeated, or citing a hit that does not exist) **end the investigation** and are reported as a gap. Prompts are versioned (`PROMPT_VERSION`, in every log) | Easy |
+| D29 | How `record_finding` verifies (M2.3) | Server trusts the model / server checks the run log | **The server is launched with the run's ID and re-verifies that run's hash chain on every call**, then looks the `hit_id` up in the logged tool outputs; the claim text, OCIDs and source references are copied from the log by code. Findings go to a separate `data/run_state.sqlite` (the snapshot stays read-only). `hits` is keyed by (`run_id`, `hit_id`), not `hit_id` alone, because IDs are deterministic (D26). Refused attempts are kept as `rejected` rows without their text. **Rule 5 (no withheld names) is enforced by shape**: withheld names are never stored, so they cannot be looked up; a rationale is one plain sentence, so any capitalised word after its first is refused. Two additions beyond the SPEC wording, both easy to remove: spelled-out numbers ("four", "half") are refused like digits, and accusatory stems beyond SPEC's list (launder, collu, kickback, embezzl, theft, scam, rigged…) are banned. Rule 3 (summary paragraph) arrives with M3.1 | Easy |
+| D28 | Run log design (M2.2) | Per-server logs / one client-side chain | **One hash-chained JSONL per run, written by a client-side `LoggedSession`** that offers only `list_tools` and `call_tool` (no way round it). Each line: `seq`, `ts`, `run_id`, `event`, `prev_hash`, `hash` (SHA-256 of the canonical JSON of every other field). Tool calls get `tc-0001`, `tc-0002`, … , shared by our server and the Filesystem server, with a `server` label. Our server's own output is logged unchanged; the model sees it plus `tool_call_id`. Records after `run_end`, missing `run_end` (reported as INCOMPLETE), moved, removed, inserted and edited lines are all detected. **Limit, stated honestly:** there is no secret key, so someone who rewrites every line and every hash is not caught from the file alone; `verify-log` prints the head hash so the approval record can store it (M3.2). `RunLog.resume` continues the same chain after the human gate | Med |
+| D27 | Extreme-value cap (SPEC 3.2) | No cap / cap | **KES 10 billion** (`data_quality.value_sanity_cap_kes`): 3 of 67,944 positive awards exceed it and carry 18% of all award value. ASSUMPTION; awards above it, in another currency, or with zero value are counted as data-quality notes and left out of statistics. New dependency: `pyyaml` (config file) | Easy |
+| D25 | Portal link (S2 result) | `portal_url = null` / build it | **Build it**: `https://tenders.go.ke/tenders/<number>`, `<number>` = middle part of the raw `tender.id`. Verified on 4 of 4 sampled historical tenders; stored in `processes.portal_url` (all 57,576 kept processes have one). Pattern and limits in `docs/spikes.md` | Easy |
 
 ## 14. Assumption ledger
 
