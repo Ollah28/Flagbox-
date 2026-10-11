@@ -9,10 +9,10 @@ __pycache__/
 node_modules/
 
 # Flagbox runtime output (never committed; data is downloaded by setup)
-data/
-logs/
-drafts/
-filed/
+/data/
+/logs/
+/drafts/
+/filed/
 *.sqlite
 *.sqlite-journal
 

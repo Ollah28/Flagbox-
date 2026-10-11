@@ -1,0 +1,9 @@
+{
+  "name": "flagbox-node-deps",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Node-side dependencies for Flagbox: the borrowed Filesystem MCP server, pinned exactly.",
+  "dependencies": {
+    "@modelcontextprotocol/server-filesystem": "2026.8.31"
+  }
+}
