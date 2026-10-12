@@ -8,11 +8,12 @@ The human gate and filing arrive in M3. Who decides what:
 The model never writes a claim, a number or a name (hard rule 2).
 """
 
+import getpass
 import json
 import time
 from collections import defaultdict
 from collections.abc import Callable
-from contextlib import closing
+from contextlib import AbstractAsyncContextManager, closing
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal, TypedDict
@@ -20,10 +21,12 @@ from typing import Any, Literal, TypedDict
 from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_core.tools import BaseTool
 from langgraph.graph import END, START, StateGraph
+from langgraph.types import interrupt
 from pydantic import BaseModel, create_model
 
-from flagbox.agent import prompts
+from flagbox.agent import filing, prompts
 from flagbox.agent.bound_tools import bind
+from flagbox.agent.gate import APPROVE, parse_decision
 from flagbox.agent.logged_tools import LoggedSession
 from flagbox.agent.model import invoke_with_retry, token_counts
 from flagbox.agent.runlog import RunLog, iter_records, verify_log
@@ -55,6 +58,9 @@ class AgentState(RunIdentity, total=False):
     outcome: str  # why the run stopped early, or "investigated"
     verification: dict[str, Any]
     memo: dict[str, Any]
+    decision: dict[str, Any]
+    approval: dict[str, Any]
+    filing: dict[str, Any]
 
 
 @dataclass
@@ -75,6 +81,10 @@ class Deps:
     gaps: list[str] = field(default_factory=list)
     attempts: dict[str, int] = field(default_factory=lambda: defaultdict(int))
     stall: int = 0  # consecutive wasted turns (refused, repeated or invented calls)
+    # Filing: opens the borrowed Filesystem server on demand, only after an approval.
+    filesystem: Callable[[], AbstractAsyncContextManager[LoggedSession]] | None = None
+    filed_dir: Path = Path("filed")
+    os_user: Callable[[], str] = getpass.getuser
 
     def clock(self) -> str:
         seconds = int(time.monotonic() - self.started)
@@ -125,7 +135,7 @@ class Skip(BaseModel):
     reason: str
 
 
-def build_graph(deps: Deps) -> Any:
+def build_graph(deps: Deps, checkpointer: Any) -> Any:
     async def check_coverage(state: AgentState) -> dict[str, Any]:
         started = time.monotonic()
         args = {k: state[k] for k in ("buyer_key", "date_from", "date_to")}  # type: ignore[literal-required]
@@ -398,12 +408,117 @@ def build_graph(deps: Deps) -> Any:
             memo = payload if payload.get("drafted") else None
         return {"memo": memo} if memo else {"outcome": "memo_failed"}
 
+    async def human_gate(state: AgentState) -> dict[str, Any]:
+        """Contains only interrupt(): the run pauses here until a person decides, and on resume
+        nothing before this line runs again."""
+        decision = interrupt({"run_id": state["run_id"], "memo": state.get("memo")})
+        return {"decision": decision}
+
+    async def decide(state: AgentState) -> dict[str, Any]:
+        """Check and record the person's decision. Code only."""
+        memo = state.get("memo") or {}
+        parsed, problem = parse_decision(state.get("decision"))
+        refusal = ""
+        if parsed is None:
+            refusal = problem or "The decision could not be read."
+        elif parsed.memo_sha256 != memo["sha256"]:
+            refusal = "The decision is tied to a different memo than the one drafted."
+        if refusal or parsed is None:
+            deps.log.append("approval_refused", reason=refusal)
+            deps.say(f"  decision not accepted: {refusal}")
+            return {
+                "outcome": "decision_invalid",
+                "approval": {"recorded": False, "problem": refusal},
+            }
+
+        head = deps.log.head_hash  # the log as the approver saw it, before this record is added
+        user = deps.os_user()
+        with closing(runstate.connect(deps.data_dir)) as conn:
+            stored = runstate.record_approval(
+                conn,
+                state["run_id"],
+                parsed.approver_name,
+                user,
+                parsed.decision,
+                parsed.note,
+                parsed.memo_sha256,
+                head,
+            )
+        if not stored:
+            deps.log.append("approval_refused", reason="this run already has a decision")
+            deps.say("  decision not accepted: this run already has a decision")
+            return {"outcome": "already_decided", "approval": {"recorded": False}}
+        deps.log.append(
+            "approval",
+            approver_name=parsed.approver_name,
+            os_user=user,
+            decision=parsed.decision,
+            note=parsed.note,
+            memo_sha256=parsed.memo_sha256,
+            log_head_hash=head,
+        )
+        deps.say(f"  decision recorded: {parsed.decision} by {parsed.approver_name} (user {user})")
+        approval = {"recorded": True, **parsed.as_dict(), "os_user": user}
+        return {
+            "approval": approval,
+            "outcome": "approved" if parsed.decision == APPROVE else "rejected",
+        }
+
+    async def file(state: AgentState) -> dict[str, Any]:
+        """Write the approved bytes to filed/. Code, not the model (hard rule 4)."""
+        approval, memo = state.get("approval") or {}, state.get("memo") or {}
+        result: filing.FilingResult
+        if verify_log(deps.log.path).ok is False:
+            result = filing.FilingResult(
+                filing.LOG_UNVERIFIABLE, "The run log failed verification."
+            )
+        elif deps.filesystem is None:
+            result = filing.FilingResult(filing.NO_FILESYSTEM, "No filing server is configured.")
+        else:
+            try:
+                deps.filed_dir.mkdir(parents=True, exist_ok=True)
+                async with deps.filesystem() as fs:
+                    result = await filing.file_memo(
+                        fs,
+                        state["run_id"],
+                        Path(memo["path"]),
+                        approval["memo_sha256"],
+                        deps.filed_dir,
+                    )
+            except (OSError, FileNotFoundError) as error:
+                result = filing.FilingResult(filing.NO_FILESYSTEM, str(error))
+        deps.log.append(
+            "filing",
+            status=result.status,
+            reason=result.reason,
+            path=result.path,
+            sha256=result.sha256,
+        )
+        with closing(runstate.connect(deps.data_dir)) as conn:
+            runstate.set_filing(conn, state["run_id"], result.status, result.path)
+        if result.ok:
+            deps.say(f"  filed: {result.path}")
+        else:
+            deps.say(f"  filing refused ({result.status}): {result.reason} Nothing was filed.")
+        return {
+            "filing": {
+                "status": result.status,
+                "reason": result.reason,
+                "path": result.path,
+                "sha256": result.sha256,
+            },
+            "outcome": "filed" if result.ok else f"filing_{result.status}",
+        }
+
     graph = StateGraph(AgentState)
     graph.add_node("check_coverage", check_coverage)
     graph.add_node("plan", plan)
     graph.add_node("investigate", investigate)
     graph.add_node("verify", verify)
     graph.add_node("draft", draft)
+    graph.add_node("human_gate", human_gate)
+    graph.add_node("decide", decide)
+    graph.add_node("file", file)
     graph.add_edge(START, "check_coverage")
     # Every route ends in a memo, even "no awards" or "nothing runnable" (SPEC section 2).
     graph.add_conditional_edges(
@@ -414,5 +529,14 @@ def build_graph(deps: Deps) -> Any:
     )
     graph.add_edge("investigate", "verify")
     graph.add_edge("verify", "draft")
-    graph.add_edge("draft", END)
-    return graph.compile()
+    graph.add_conditional_edges(
+        "draft", lambda s: "human_gate" if s.get("memo") else END, ["human_gate", END]
+    )
+    graph.add_edge("human_gate", "decide")
+    graph.add_conditional_edges(
+        "decide",
+        lambda s: "file" if s.get("outcome") == "approved" else END,
+        ["file", END],
+    )
+    graph.add_edge("file", END)
+    return graph.compile(checkpointer=checkpointer)

@@ -48,6 +48,8 @@ def build_parser() -> argparse.ArgumentParser:
     runner.add_argument(
         "--config", type=Path, default=Path("config/indicators.yaml"), help="Indicator settings"
     )
+    runner.add_argument("--drafts-dir", type=Path, default=Path("drafts"), help="Default: ./drafts")
+    runner.add_argument("--filed-dir", type=Path, default=Path("filed"), help="Default: ./filed")
     verify = commands.add_parser(
         "verify-log", help="Check that a run's log has not been edited (hash chain)."
     )
@@ -116,6 +118,8 @@ def _run_agent(args: argparse.Namespace) -> int:
                 args.data_dir,
                 args.logs_dir,
                 args.config,
+                drafts_dir=args.drafts_dir,
+                filed_dir=args.filed_dir,
             )
         )
     except (EOFError, KeyboardInterrupt):

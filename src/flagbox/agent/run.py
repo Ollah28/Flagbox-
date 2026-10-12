@@ -1,26 +1,33 @@
-"""`flagbox run`: one screening run, start to finish (SPEC section 2, steps 1-3).
+"""`flagbox run`: one screening run, start to finish (SPEC section 2).
 
 Order of events:
   1. check Ollama and the data (exit code 2 if either is missing);
   2. open the run's log and start our MCP server for this run;
   3. find the buyer with `find_buyer` (a logged tool call) and let the officer pick if unclear;
-  4. run the graph, printing one line per tool call;
-  5. print the screening result and close the log.
+  4. run the graph, printing one line per tool call, until the memo is drafted;
+  5. print the memo and its SHA-256, and ask a named person to approve or reject it;
+  6. on approval, file exactly those bytes (code, not the model); on rejection, file nothing;
+  7. close the log.
 """
 
 import asyncio
+import hashlib
+import os
 import time
-from collections.abc import Callable
-from contextlib import closing
+from collections.abc import AsyncIterator, Callable
+from contextlib import asynccontextmanager, closing
 from datetime import date
 from pathlib import Path
 from typing import Any
 
 from langchain_mcp_adapters.tools import load_mcp_tools
+from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
+from langgraph.types import Command
 from mcp import ClientSession
 from mcp.client.stdio import stdio_client
 
 from flagbox.agent import prompts
+from flagbox.agent.gate import collect_decision
 from flagbox.agent.graph import AgentState, Deps, build_graph, progress_line
 from flagbox.agent.logged_tools import LoggedSession
 from flagbox.agent.model import (
@@ -33,10 +40,20 @@ from flagbox.agent.model import (
 from flagbox.agent.runlog import RunLog
 from flagbox.data.ingest import DB_NAME
 from flagbox.data.redact import normalise_name
-from flagbox.mcp_client import server_parameters
+from flagbox.mcp_client import (
+    DEFAULT_DRAFTS_DIR,
+    DEFAULT_FILED_DIR,
+    filesystem_parameters,
+    server_parameters,
+)
 from flagbox.server import runstate
 
-RUN_HARD_STOP_SECONDS = 30 * 60  # SPEC section 7
+RUN_HARD_STOP_SECONDS = 30 * 60  # SPEC section 7 (the human's time at the gate is not counted)
+FILING_SECONDS = 120
+CHECKPOINT_DB = "checkpoints.sqlite"
+
+# Outcomes that are a normal end to a run, as opposed to something that went wrong.
+CLEAN_OUTCOMES = {"filed", "rejected", "not_decided"}
 
 
 def choose_buyer(
@@ -63,43 +80,73 @@ def choose_buyer(
     return None, "cancelled"
 
 
-def _print_memo(
-    say: Callable[[str], None],
-    run_id: str,
-    state: dict[str, Any],
-    deps: Deps,
-    data_dir: Path,
-) -> bool:
-    """Print the full draft memo and its SHA-256 (SPEC section 2, step 4). False if none."""
-    memo = state.get("memo")
-    if not memo:
-        say("\nThe memo could not be drafted. See the run log for the reason.")
-        return False
-    text = Path(memo["path"]).read_bytes().decode("utf-8")
-    with closing(runstate.connect(data_dir)) as conn:
-        refused = runstate.count_rejected(conn, run_id)
-
+def _show_memo(say: Callable[[str], None], memo: dict[str, Any]) -> bool:
+    """Print the memo exactly as it is on disk, with its hash. Returns False if the file's hash
+    is not the hash it was drafted with, in which case nobody should be asked to approve it."""
+    data = Path(memo["path"]).read_bytes()
+    actual = hashlib.sha256(data).hexdigest()
     say("")
     say("=" * 78)
-    say("DRAFT MEMO (not approved, not filed)")
+    say("MEMO FOR REVIEW (nothing has been approved or filed yet)")
     say("=" * 78)
-    say(text.rstrip("\n"))
+    say(data.decode("utf-8").rstrip("\n"))
     say("=" * 78)
     say(f"Draft file: {memo['path']}")
-    say(f"SHA-256:    {memo['sha256']}")
+    say(f"SHA-256:    {actual}")
     by_model = memo["summary_source"] == "model"
     say(
         "Summary:    "
         + ("written by the model, checked by rules" if by_model else "fixed template")
     )
-    say(
-        f"Model calls {deps.llm_calls}, tool calls {deps.tool_calls}, findings refused by the "
-        f"verifier {refused}, tokens in/out {deps.tokens_in}/{deps.tokens_out}, "
-        f"run time {deps.clock()}."
-    )
-    say("A human decides what happens next. Nothing has been approved or filed.")
-    say(f"Check the log has not been edited:  flagbox verify-log {run_id}")
+    if actual != memo["sha256"]:
+        say("The draft on disk is not the file that was drafted (its hash changed).")
+        return False
     return True
+
+
+def _print_outcome(say: Callable[[str], None], state: dict[str, Any]) -> None:
+    outcome = state.get("outcome", "")
+    approval = state.get("approval") or {}
+    filing = state.get("filing") or {}
+    say("")
+    if outcome == "filed":
+        say(f"FILED: {filing['path']}")
+        say(f"SHA-256 of the filed file: {filing['sha256']} (matches the approved memo)")
+        say(f"Approved by {approval['approver_name']} (user {approval['os_user']}).")
+    elif outcome == "rejected":
+        say(
+            f"REJECTED by {approval['approver_name']} (user {approval['os_user']}). "
+            "Nothing was filed."
+        )
+        if approval.get("note"):
+            say(f"Note: {approval['note']}")
+    elif outcome == "not_decided":
+        say(
+            "No decision was recorded. Nothing was filed. "
+            "The draft memo is still in the drafts folder."
+        )
+    elif outcome.startswith("filing_"):
+        say(f"NOT FILED: {filing.get('reason') or outcome}")
+        say(
+            f"Approved by {approval.get('approver_name', '?')}, "
+            "but the safety checks refused to file."
+        )
+    elif outcome in ("decision_invalid", "already_decided"):
+        say(f"NOT FILED: the decision was not accepted ({approval.get('problem') or outcome}).")
+    elif outcome == "draft_changed":
+        say("NOT FILED: the draft changed after it was drafted. Run again.")
+    else:
+        say("The memo could not be drafted. See the run log for the reason.")
+
+
+@asynccontextmanager
+async def _filesystem(log: RunLog, filed_dir: Path) -> AsyncIterator[LoggedSession]:
+    """Start the borrowed Filesystem server for filing only, logged like every other server."""
+    with open(os.devnull, "w") as quiet:  # the server prints a banner to stderr on start-up
+        async with stdio_client(filesystem_parameters(filed_dir), errlog=quiet) as (read, write):
+            async with ClientSession(read, write) as raw:
+                await raw.initialize()
+                yield LoggedSession(raw, log, server="filesystem")
 
 
 async def run(
@@ -112,8 +159,13 @@ async def run(
     say: Callable[[str], None] = lambda text: print(text, flush=True),
     ask: Callable[[str], str] = input,
     settings: ModelSettings | None = None,
+    drafts_dir: Path = DEFAULT_DRAFTS_DIR,
+    filed_dir: Path = DEFAULT_FILED_DIR,
+    check_model: Callable[[ModelSettings], None] = check_ollama,
+    llm_factory: Callable[[ModelSettings], Any] = make_llm,
 ) -> int:
     settings = settings or settings_from_env()
+    drafts_dir, filed_dir = drafts_dir.resolve(), filed_dir.resolve()
     try:
         start, end = date.fromisoformat(date_from), date.fromisoformat(date_to)
         if start > end:
@@ -125,7 +177,7 @@ async def run(
         say(f"No snapshot at {data_dir / DB_NAME}. Run `flagbox setup-data` then `flagbox ingest`.")
         return 2
     try:
-        check_ollama(settings)
+        check_model(settings)
     except ModelUnavailable as error:
         say(str(error))
         return 2
@@ -153,8 +205,9 @@ async def run(
 
     status, exit_code = "failed", 2
     deps: Deps | None = None
-    state: dict[str, Any] = {}
-    params = server_parameters(data_dir, config_path, run_id=log.run_id, logs_dir=logs_dir)
+    params = server_parameters(
+        data_dir, config_path, run_id=log.run_id, logs_dir=logs_dir, drafts_dir=drafts_dir
+    )
     try:
         async with stdio_client(params) as (read, write), ClientSession(read, write) as raw:
             await raw.initialize()
@@ -184,13 +237,14 @@ async def run(
                 deps = Deps(
                     session=session,
                     log=log,
-                    llm=make_llm(settings),
+                    llm=llm_factory(settings),
                     base_tools=await load_mcp_tools(session),  # type: ignore[arg-type]
                     data_dir=data_dir,
                     say=say,
+                    filesystem=lambda: _filesystem(log, filed_dir),
+                    filed_dir=filed_dir,
                 )
                 deps.tool_calls = 1  # the find_buyer call above
-                graph = build_graph(deps)
                 initial: AgentState = {
                     "run_id": log.run_id,
                     "buyer_key": buyer["buyer_key"],
@@ -198,17 +252,44 @@ async def run(
                     "date_from": date_from,
                     "date_to": date_to,
                 }
-                async with asyncio.timeout(RUN_HARD_STOP_SECONDS):
-                    state = await graph.ainvoke(initial)
-                state = {**initial, **state}
-                drafted = _print_memo(say, log.run_id, state, deps, data_dir)
+                config: Any = {"configurable": {"thread_id": log.run_id}}
+                async with AsyncSqliteSaver.from_conn_string(
+                    str(data_dir / CHECKPOINT_DB)
+                ) as saver:
+                    graph = build_graph(deps, saver)
+                    async with asyncio.timeout(RUN_HARD_STOP_SECONDS):
+                        result = await graph.ainvoke(initial, config)
+                    state: dict[str, Any] = {**initial, **result}
+
+                    if result.get("__interrupt__"):  # the memo is ready and the gate is waiting
+                        if not _show_memo(say, state["memo"]):
+                            state["outcome"] = "draft_changed"
+                        else:
+                            decision = collect_decision(ask, say, state["memo"]["sha256"])
+                            if decision is None:
+                                state["outcome"] = "not_decided"
+                                log.append("not_decided", reason="the reviewer did not decide")
+                            else:
+                                async with asyncio.timeout(FILING_SECONDS):
+                                    result = await graph.ainvoke(Command(resume=decision), config)
+                                state = {**state, **result}
+
+                _print_outcome(say, state)
                 status = state.get("outcome") or "completed"
-                exit_code = 0 if drafted else 2
+                exit_code = 0 if status in CLEAN_OUTCOMES else 2
+                with closing(runstate.connect(data_dir)) as conn:
+                    refused = runstate.count_rejected(conn, log.run_id)
+                say(
+                    f"Model calls {deps.llm_calls}, tool calls {deps.tool_calls}, findings "
+                    f"refused by the verifier {refused}, tokens in/out "
+                    f"{deps.tokens_in}/{deps.tokens_out}, run time {deps.clock()}."
+                )
+                say(f"Check the log has not been edited:  flagbox verify-log {log.run_id}")
     except ModelUnavailable as error:
         say(f"The model could not be reached: {error}")
         status, exit_code = "model_unavailable", 2
     except TimeoutError:
-        say("The run hit the 30-minute hard stop and was cancelled.")
+        say("The run hit its time limit and was cancelled.")
         status, exit_code = "timeout", 2
     finally:
         counts = {

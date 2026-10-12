@@ -74,6 +74,19 @@ CREATE TABLE IF NOT EXISTS memos (
     drafted_at     TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS approvals (
+    run_id         TEXT PRIMARY KEY,
+    approver_name  TEXT NOT NULL,
+    os_user        TEXT NOT NULL,
+    decision       TEXT NOT NULL CHECK (decision IN ('approve', 'reject')),
+    note           TEXT,
+    memo_sha256    TEXT NOT NULL,
+    log_head_hash  TEXT NOT NULL,
+    decided_at     TEXT NOT NULL,
+    filed_path     TEXT,
+    filing_status  TEXT
+);
+
 CREATE INDEX IF NOT EXISTS idx_findings_run ON findings (run_id, status);
 """
 
@@ -253,3 +266,47 @@ def count_rejected(conn: sqlite3.Connection, run_id: str) -> int:
         "SELECT COUNT(*) FROM findings WHERE run_id = ? AND status = 'rejected'", (run_id,)
     ).fetchone()
     return int(row[0])
+
+
+def record_approval(
+    conn: sqlite3.Connection,
+    run_id: str,
+    approver_name: str,
+    os_user: str,
+    decision: str,
+    note: str,
+    memo_sha256: str,
+    log_head_hash: str,
+) -> bool:
+    """Store the one decision a run may have. Returns False if it already has one."""
+    try:
+        with conn:
+            conn.execute(
+                "INSERT INTO approvals (run_id, approver_name, os_user, decision, note, "
+                "memo_sha256, log_head_hash, decided_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    run_id,
+                    approver_name,
+                    os_user,
+                    decision,
+                    note,
+                    memo_sha256,
+                    log_head_hash,
+                    _now(),
+                ),
+            )
+    except sqlite3.IntegrityError:
+        return False
+    return True
+
+
+def set_filing(conn: sqlite3.Connection, run_id: str, status: str, path: str | None) -> None:
+    with conn:
+        conn.execute(
+            "UPDATE approvals SET filing_status = ?, filed_path = ? WHERE run_id = ?",
+            (status, path, run_id),
+        )
+
+
+def get_approval(conn: sqlite3.Connection, run_id: str) -> sqlite3.Row | None:
+    return conn.execute("SELECT * FROM approvals WHERE run_id = ?", (run_id,)).fetchone()

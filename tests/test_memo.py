@@ -139,7 +139,7 @@ def test_the_memo_has_every_required_section(make_run):
     ctx, _ = make_run()
     text = read(draft(ctx))
     for heading in (
-        "# Screening memo (DRAFT): Buyer One",
+        "# Screening memo: Buyer One",
         "## Summary",
         "## Findings",
         "## What the data covered",
@@ -151,7 +151,8 @@ def test_the_memo_has_every_required_section(make_run):
         "## Sources",
     ):
         assert heading in text, heading
-    assert "**Not approved. Not filed.**" in text
+    assert "**A screening aid, not a decision.**" in text
+    assert "Not approved" not in text and "Not filed" not in text  # true after filing too
     for caveat in CAVEATS:
         assert caveat in text
 

@@ -112,7 +112,7 @@ Each milestone ends with a git tag (`m1`, `m2`, …). **Rollback = `git reset --
   - Files: a `draft_memo(run_id)` tool (UUID-validated) and `src/flagbox/memo/template.md.j2`. The memo contains a coverage table, findings tables with OCIDs and source_refs, caveats, checks skipped or not completed, a dismissed-hits appendix, and data-quality notes. The LLM writes only the summary paragraph, which goes through verifier rule 3; if it fails twice, a fixed summary is used.
   - Tests: a summary mentioning an uncited supplier is rejected.
   - **Accept:** the draft is written to `drafts/`, and its SHA-256 is returned.
-- [ ] **M3.2 Gate plus filing (1.5 h).** In `graph.py`:
+- [x] **M3.2 Gate plus filing (1.5 h).** In `graph.py`:
   - a `human_gate` node containing only `interrupt()`, with a SQLite checkpointer;
   - a `file` node in code that checks `list_directory` (no overwrite), confirms the draft hash equals the approved hash, and calls the borrowed server's `write_file`;
   - an `approvals` table row, including the OS user.

@@ -9,6 +9,7 @@ from typing import Any
 from helpers import CONFIG_PATH
 from langchain_core.messages import AIMessage, BaseMessage, ToolMessage
 from langchain_mcp_adapters.tools import load_mcp_tools
+from langgraph.checkpoint.memory import InMemorySaver
 from mcp.shared.memory import create_connected_server_and_client_session
 
 from flagbox.agent.graph import Deps, build_graph
@@ -108,14 +109,15 @@ async def _run(
             data_dir=data_dir,
             say=lines.append,
         )
-        state = await build_graph(deps).ainvoke(
+        state = await build_graph(deps, InMemorySaver()).ainvoke(
             {
                 "run_id": log.run_id,
                 "buyer_key": buyer,
                 "buyer_name": "Buyer One",
                 "date_from": dates[0],
                 "date_to": dates[1],
-            }
+            },
+            {"configurable": {"thread_id": log.run_id}},
         )
     log.finish("completed")
     return state, deps, log, lines

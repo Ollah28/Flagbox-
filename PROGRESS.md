@@ -62,6 +62,20 @@ M2 in progress (M2.1 done). M0.2 (model spike) still to run by the developer; M2
   55 s when both attempts were refused and the fixed one was used; Kenya Maritime Authority 1 min 8 s, "no
   finding". 275 tests pass, ruff and pyright clean; disabling the uncited-supplier and number checks makes 4
   tests fail. SPEC D32.
+- Mon 12 Oct: **M3.2** the human gate and filing. `human_gate` is only `interrupt()` (SQLite checkpointer);
+  `decide` validates the typed name, the decision and the memo hash and writes the `approvals` row (approver,
+  OS user, memo SHA-256, the log head hash the approver saw) plus an `approval` log event; `file` re-verifies the
+  log, re-hashes the draft against the approved hash, uses `list_directory` to refuse a duplicate name, calls
+  the Filesystem server's `write_file`, reads back and re-checks the hash. A rejection never starts that
+  server. New modules `agent/gate.py` and `agent/filing.py`; `flagbox run` gained `--drafts-dir` and
+  `--filed-dir`. **Verified on the real stack** (qwen3:8b, our MCP server, the real Node Filesystem server):
+  approval filed a byte-identical memo (hash matches the approved one) and the log verifies; a rejection filed
+  nothing. 333 tests pass, ruff and pyright clean; disabling the draft-hash check and the duplicate check each
+  makes tests fail. SPEC D33.
+  Two real bugs found only by using the real server, both fixed with regression tests: a relative `filed`
+  folder was resolved by the server against its own root (`filed/filed`), and the `tool_call_id` text block the
+  logging wrapper adds would have been glued onto the last filename of a directory listing, hiding an
+  existing file from the duplicate check (so `write_file` would have overwritten it).
 
 ## M1.3 results in one screen
 - **Indicators chosen:** `repeat_winner`, `value_outlier`, `non_competitive_share` (all above 60% joint
@@ -82,7 +96,7 @@ M2 in progress (M2.1 done). M0.2 (model spike) still to run by the developer; M2
 
 ## Next
 - **Developer:** M0.2 (model tool-calling spike, needs Ollama), then paste the result into `docs/spikes.md`.
-- Commit and push (see Known issues), then **M3.2**: the human gate and filing (`interrupt()`, approval bound to the memo's SHA-256, the Filesystem server's `write_file` called by code, no-overwrite check).
+- Commit and push (see Known issues), then **M3.3**: first full real run on 2 eval buyers with timing recorded here (the code path now works end to end; I have one approval run at 6 min 54 s and one rejection run at 1 min 54 s). Close memory-hungry apps before timing: see Known issues.
 - M0.2 (formal S3 measurement: 10 multi-turn sequences, then qwen3:14b) is still open. Ollama is reachable from this session, so it can be run here; say so and it will be done.
 
 ## Measurements
@@ -97,8 +111,21 @@ M2 in progress (M2.1 done). M0.2 (model spike) still to run by the developer; M2
 | 11 Oct | Full run, Kenya Literature Bureau (453 awards), qwen3:8b | 1 min 51 s (plan 9.5 s; 4 model calls; 4,816 tokens in / 153 out) |
 | 11 Oct | Full run, Kenya Maritime Authority (158 awards), qwen3:8b | 54 s (3 model calls; 1,861 in / 97 out) |
 | 11 Oct | qwen3:8b in Ollama at num_ctx 16384 | 8.3 GB loaded, 92% CPU / 8% GPU (Quadro M1000M, 2 GB), 5.6 GB RAM free before loading |
+| 12 Oct | Real run to approval and filing, Kenya Literature Bureau, qwen3:8b | 6 min 54 s, with only 0.4 GB RAM free (model 6.7 GB resident); the same buyer took 1 min 15 s to 2 min 55 s earlier |
+| 12 Oct | Real run to rejection, Kenya Maritime Authority | 1 min 54 s |
 
 ## Known issues
+- **Run time depends heavily on free memory.** With 0.4 GB RAM free the same run took about 3 times as long
+  (model turns of 3 minutes instead of 1). The model alone is 6.7 GB resident; on this 16 GB laptop, browsers
+  and other apps decide whether a run takes 2 minutes or 7. For M3.3 timing and the evals, close other apps
+  first and record free RAM next to each time.
+- The test approvals made while checking M3.2 are in `data/run_state.sqlite` (approver "Test Approver (automated
+  check)"). They are test rows, not real approvals. `filed/` was emptied afterwards.
+- Resuming a paused run in a *different process* (a `flagbox approve <run_id>` command) is not built. The
+  checkpoint database exists and the gate is resumable in principle, but today the approval is typed in the
+  same terminal session that drafted the memo. If the terminal is closed at the gate, the run is not resumable
+  (the draft stays in `drafts/`). Worth adding only if there is time.
+- The duplicate check (`list_directory`, then `write_file`) is not atomic. Fine for one local user; noted in D33.
 - **The 8B model is weak at the summary paragraph.** First attempts usually add a count word ("Two suppliers")
   and are refused; with a style example in the prompt the second attempt passes, but it then copies the
   example almost word for word, so the "model-written" summary is close to templated. Left as is: the rules

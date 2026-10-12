@@ -15,6 +15,8 @@ DEFAULT_DATA_DIR = Path("data")
 DEFAULT_CONFIG = Path("config/indicators.yaml")
 DEFAULT_LOGS_DIR = Path("logs")
 DEFAULT_DRAFTS_DIR = Path("drafts")
+DEFAULT_FILED_DIR = Path("filed")
+FILESYSTEM_SERVER_JS = Path("node_modules/@modelcontextprotocol/server-filesystem/dist/index.js")
 
 
 def server_parameters(
@@ -47,3 +49,19 @@ async def list_server_tools(params: StdioServerParameters) -> list[Tool]:
     async with stdio_client(params) as (read, write), ClientSession(read, write) as session:
         await session.initialize()
         return (await session.list_tools()).tools
+
+
+def filesystem_parameters(
+    filed_dir: Path = DEFAULT_FILED_DIR, server_js: Path = FILESYSTEM_SERVER_JS
+) -> StdioServerParameters:
+    """Launch the borrowed Filesystem server with `node`, never `npx` (CLAUDE.md), allowed to
+    touch only the filing folder. Only code ever talks to it, and only after an approval."""
+    project_root = Path(__file__).resolve().parents[2]  # works from any working directory
+    found = next((c for c in (server_js, project_root / server_js) if c.exists()), None)
+    if found is None:
+        raise FileNotFoundError(
+            "The Filesystem server is not installed. Run `npm ci` in the project folder."
+        )
+    return StdioServerParameters(
+        command="node", args=[str(found.resolve()), str(filed_dir.resolve())]
+    )
