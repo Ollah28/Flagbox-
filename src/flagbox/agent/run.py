@@ -9,7 +9,6 @@ Order of events:
 """
 
 import asyncio
-import json
 import time
 from collections.abc import Callable
 from contextlib import closing
@@ -64,76 +63,43 @@ def choose_buyer(
     return None, "cancelled"
 
 
-def _print_report(
-    say: Callable[[str], None], run_id: str, state: dict[str, Any], deps: Deps, data_dir: Path
-) -> None:
+def _print_memo(
+    say: Callable[[str], None],
+    run_id: str,
+    state: dict[str, Any],
+    deps: Deps,
+    data_dir: Path,
+) -> bool:
+    """Print the full draft memo and its SHA-256 (SPEC section 2, step 4). False if none."""
+    memo = state.get("memo")
+    if not memo:
+        say("\nThe memo could not be drafted. See the run log for the reason.")
+        return False
+    text = Path(memo["path"]).read_bytes().decode("utf-8")
     with closing(runstate.connect(data_dir)) as conn:
-        findings = runstate.kept_findings(conn, run_id)
-        refused = conn.execute(
-            "SELECT COUNT(*) FROM findings WHERE run_id = ? AND status = 'rejected'", (run_id,)
-        ).fetchone()[0]
+        refused = runstate.count_rejected(conn, run_id)
 
     say("")
     say("=" * 78)
-    say(f"SCREENING RESULT  {state['buyer_name']}, {state['date_from']} to {state['date_to']}")
+    say("DRAFT MEMO (not approved, not filed)")
     say("=" * 78)
-    verification = state.get("verification", {})
-    if findings:
-        for row in findings:
-            refs = json.loads(row["source_refs"])
-            say(
-                f"\nFINDING {row['finding_id']}  severity: {row['severity']}  "
-                f"(from call {row['tool_call_id']})"
-            )
-            say(f"  {row['claim_text']}")
-            say(f"  Why it warrants review: {row['rationale']}")
-            for ref in refs:
-                say(f"  Evidence: {ref['ocid']}  ({ref['file']} line {ref['line_no']})")
-                if ref.get("portal_url"):
-                    say(f"            {ref['portal_url']}")
-    else:
-        say(_justified_none(state, verification))
-    if verification.get("undecided"):
-        say(
-            f"\n{len(verification['undecided'])} hits received no finding "
-            "(the model did not record them)."
-        )
-    for gap in deps.gaps:
-        say(f"Gap: {gap}")
-    for check in verification.get("checks", []):
-        say(
-            f"Checked: {check['indicator']} -> {check['hits_total']} hits "
-            f"among {check['awards_checked']} awards"
-        )
+    say(text.rstrip("\n"))
+    say("=" * 78)
+    say(f"Draft file: {memo['path']}")
+    say(f"SHA-256:    {memo['sha256']}")
+    by_model = memo["summary_source"] == "model"
     say(
-        f"\nModel calls {deps.llm_calls}, tool calls {deps.tool_calls}, findings refused by the "
+        "Summary:    "
+        + ("written by the model, checked by rules" if by_model else "fixed template")
+    )
+    say(
+        f"Model calls {deps.llm_calls}, tool calls {deps.tool_calls}, findings refused by the "
         f"verifier {refused}, tokens in/out {deps.tokens_in}/{deps.tokens_out}, "
         f"run time {deps.clock()}."
     )
-    say(
-        "This is a screening result for a human to review. "
-        "No memo has been drafted and nothing filed."
-    )
+    say("A human decides what happens next. Nothing has been approved or filed.")
     say(f"Check the log has not been edited:  flagbox verify-log {run_id}")
-
-
-def _justified_none(state: dict[str, Any], verification: dict[str, Any]) -> str:
-    outcome = state.get("outcome", "")
-    coverage = state.get("coverage", {})
-    if outcome == "no_awards":
-        return "No findings: " + coverage.get("message", "no awards in this range.")
-    if outcome == "nothing_runnable":
-        return (
-            "No findings: none of the indicators has enough usable data for this buyer and range."
-        )
-    if outcome == "plan_empty":
-        return "No findings: the plan ran no indicators."
-    if outcome == "coverage_failed":
-        return "No findings: the coverage check failed."
-    checks = verification.get("checks", [])
-    if checks and all(c["hits_total"] == 0 for c in checks):
-        return "No findings: no indicator crossed its threshold. That is a valid result."
-    return "No findings were recorded."
+    return True
 
 
 async def run(
@@ -235,8 +201,9 @@ async def run(
                 async with asyncio.timeout(RUN_HARD_STOP_SECONDS):
                     state = await graph.ainvoke(initial)
                 state = {**initial, **state}
-                _print_report(say, log.run_id, state, deps, data_dir)
-                status, exit_code = state.get("outcome") or "completed", 0
+                drafted = _print_memo(say, log.run_id, state, deps, data_dir)
+                status = state.get("outcome") or "completed"
+                exit_code = 0 if drafted else 2
     except ModelUnavailable as error:
         say(f"The model could not be reached: {error}")
         status, exit_code = "model_unavailable", 2

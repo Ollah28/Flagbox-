@@ -108,7 +108,7 @@ Each milestone ends with a git tag (`m1`, `m2`, …). **Rollback = `git reset --
 
 **Goal:** the full safe loop: draft, then approve against the hash, then file with the borrowed server.
 
-- [ ] **M3.1 `draft_memo` (1.5 h).**
+- [x] **M3.1 `draft_memo` (1.5 h).**
   - Files: a `draft_memo(run_id)` tool (UUID-validated) and `src/flagbox/memo/template.md.j2`. The memo contains a coverage table, findings tables with OCIDs and source_refs, caveats, checks skipped or not completed, a dismissed-hits appendix, and data-quality notes. The LLM writes only the summary paragraph, which goes through verifier rule 3; if it fails twice, a fixed summary is used.
   - Tests: a summary mentioning an uncited supplier is rejected.
   - **Accept:** the draft is written to `drafts/`, and its SHA-256 is returned.

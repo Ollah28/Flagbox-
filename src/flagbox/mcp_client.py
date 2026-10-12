@@ -14,6 +14,7 @@ from mcp.types import Tool
 DEFAULT_DATA_DIR = Path("data")
 DEFAULT_CONFIG = Path("config/indicators.yaml")
 DEFAULT_LOGS_DIR = Path("logs")
+DEFAULT_DRAFTS_DIR = Path("drafts")
 
 
 def server_parameters(
@@ -21,6 +22,7 @@ def server_parameters(
     config_path: Path = DEFAULT_CONFIG,
     run_id: str | None = None,
     logs_dir: Path = DEFAULT_LOGS_DIR,
+    drafts_dir: Path = DEFAULT_DRAFTS_DIR,
 ) -> StdioServerParameters:
     """With a run_id the server can record findings for that run (it checks them against the
     run's log). Without one, record_finding refuses every call."""
@@ -32,6 +34,7 @@ def server_parameters(
     if run_id:
         env["FLAGBOX_RUN_ID"] = run_id
         env["FLAGBOX_LOGS_DIR"] = str(logs_dir.resolve())
+        env["FLAGBOX_DRAFTS_DIR"] = str(drafts_dir.resolve())
     return StdioServerParameters(
         command=sys.executable, args=["-m", "flagbox.server.server"], env=env
     )

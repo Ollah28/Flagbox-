@@ -84,6 +84,15 @@ def build_server(data_dir: Path, config_path: Path, run: tools.RunContext | None
     def record_finding(hit_id: str, severity: str, reason_code: str) -> dict[str, Any]:
         return tools.record_finding(run, indicators, hit_id, severity, reason_code)
 
+    @mcp.tool()
+    @_structured_errors
+    def draft_memo(run_id: str, summary: str | None = None) -> dict[str, Any]:
+        """Draft the screening memo for the current run from its stored findings and write it to
+        the drafts folder. Returns the file path and its SHA-256. Optionally pass a summary
+        paragraph; it is checked against the findings (no uncited supplier or OCID, no numbers
+        that are not in a finding, no accusing words) and, if it fails, no file is written."""
+        return tools.draft_memo(run, run_id, summary)
+
     menu = "\n".join(f"- {r.code}: {r.text}" for ind in indicators.values() for r in ind.reasons)
     mcp.add_tool(
         record_finding,
@@ -130,6 +139,7 @@ def main() -> int:
         tools.RunContext(
             run_id=parse_run_id(run_id),
             logs_dir=Path(os.environ.get("FLAGBOX_LOGS_DIR", "logs")).resolve(),
+            drafts_dir=Path(os.environ.get("FLAGBOX_DRAFTS_DIR", "drafts")).resolve(),
             data_dir=data_dir,
         )
         if run_id

@@ -94,7 +94,7 @@ async def _run(
 ):
     logs_dir = tmp_path / "logs"
     log = RunLog.create(logs_dir)
-    ctx = tools.RunContext(log.run_id, logs_dir, data_dir)
+    ctx = tools.RunContext(log.run_id, logs_dir, data_dir, drafts_dir=tmp_path / "drafts")
     lines: list[str] = []
     async with create_connected_server_and_client_session(
         build_server(data_dir, CONFIG_PATH, ctx)
@@ -125,8 +125,13 @@ def run(data_dir: Path, tmp_path: Path, llm: ScriptedLLM, **kwargs: Any):
     return asyncio.run(_run(data_dir, tmp_path, llm, **kwargs))
 
 
-def tool_names(log: RunLog) -> list[str]:
-    return [r["tool"] for r in iter_records(log.path) if r["event"] == "tool_call"]
+def tool_names(log: RunLog, include_draft: bool = False) -> list[str]:
+    names = [r["tool"] for r in iter_records(log.path) if r["event"] == "tool_call"]
+    return names if include_draft else [n for n in names if n != "draft_memo"]
+
+
+def draft_calls(log: RunLog) -> list[dict[str, Any]]:
+    return [r for r in iter_records(log.path) if r.get("tool") == "draft_memo"]
 
 
 def finding_rows(data_dir: Path, status: str) -> list[Any]:
@@ -174,7 +179,9 @@ def test_a_full_run_plans_investigates_records_and_verifies(data_dir, tmp_path):
     assert sum("recorded (" in line for line in lines) == 2
     # the model was only offered the planned indicator and record_finding
     assert sorted(llm.bound) == ["record_finding", "repeat_winner"]
-    assert deps.llm_calls == 1 + 4 and deps.tokens_in > 0
+    assert (
+        deps.llm_calls == 1 + 4 + 2
+    )  # plan, investigation turns, two summary attempts and deps.tokens_in > 0
 
 
 def test_the_model_cannot_choose_the_buyer_or_dates(data_dir, tmp_path):
@@ -343,3 +350,90 @@ def test_running_the_same_indicator_twice_is_refused(data_dir, tmp_path):
     refused = [r for r in iter_records(log.path) if r["event"] == "refused_call"]
     assert len(refused) == 1 and "already been run" in refused[0]["reason"]
     assert deps.stall == 1
+
+
+# ---- the draft step -----------------------------------------------------------
+
+GOOD_SUMMARY = (
+    "Some suppliers received a share of this buyer's award value at or above the review "
+    "threshold. A human reviewer should examine these patterns against the source records."
+)
+
+
+def with_summaries(*summaries: str) -> list[Step]:
+    """Happy-path investigation, then the model's summary attempts."""
+    done: Step = lambda m: AIMessage(content="DONE")  # noqa: E731
+    attempts: list[Step] = [lambda m, t=t: AIMessage(content=t) for t in summaries]
+    return [*happy_steps(), done, *attempts]
+
+
+def memo_text(state: dict[str, Any]) -> str:
+    return Path(state["memo"]["path"]).read_text(encoding="utf-8")
+
+
+def test_a_model_summary_that_passes_the_rules_is_used_and_labelled(data_dir, tmp_path):
+    llm = ScriptedLLM(["repeat_winner"], with_summaries(GOOD_SUMMARY))
+    state, deps, log, lines = run(data_dir, tmp_path, llm)
+
+    assert state["memo"]["summary_source"] == "model" and len(state["memo"]["sha256"]) == 64
+    text = memo_text(state)
+    assert (
+        GOOD_SUMMARY in text and "written by the language model and checked by fixed rules" in text
+    )
+    assert len(draft_calls(log)) == 1 and deps.llm_calls == 1 + 4 + 1
+    assert any("draft_memo" in line for line in lines)
+    assert verify_log(log.path).ok
+
+
+def test_a_refused_summary_is_retried_once_with_the_reason(data_dir, tmp_path):
+    bad = "Two suppliers received a share of this buyer's award value, so a human should look."
+    llm = ScriptedLLM(["repeat_winner"], with_summaries(bad, GOOD_SUMMARY))
+    state, _, log, _ = run(data_dir, tmp_path, llm)
+
+    first, second = draft_calls(log)
+    assert first["result"]["drafted"] is False
+    assert [v["rule"] for v in first["result"]["violations"]] == ["numbers"]
+    assert second["result"]["drafted"] is True and state["memo"]["summary_source"] == "model"
+
+
+def test_after_two_refusals_the_fixed_summary_is_used(data_dir, tmp_path):
+    bad = "These suppliers look fraudulent to us, so someone should check this buyer."
+    llm = ScriptedLLM(["repeat_winner"], with_summaries("Two suppliers.", bad))
+    state, deps, log, _ = run(data_dir, tmp_path, llm)
+
+    calls = draft_calls(log)
+    assert [c["result"]["drafted"] for c in calls] == [False, False, True]
+    assert "summary" not in calls[2]["arguments"]  # the third call sends no summary at all
+    assert state["memo"]["summary_source"] == "fixed"
+    assert "found 2 patterns that warrant review by a human reviewer" in memo_text(state)
+    assert "the model's summary failed the rules twice; fixed summary used" in deps.gaps
+
+
+def test_the_model_is_never_offered_draft_memo(data_dir, tmp_path):
+    llm = ScriptedLLM(["repeat_winner"], with_summaries(GOOD_SUMMARY))
+    run(data_dir, tmp_path, llm)
+    assert all("draft_memo" not in menu for menu in llm.menus)
+
+
+def test_with_no_findings_the_model_is_not_asked_and_the_memo_says_why(data_dir, tmp_path):
+    steps = [lambda m: call("repeat_winner", {})]
+    llm = ScriptedLLM(["repeat_winner"], steps)
+    state, _, log, _ = run(data_dir, tmp_path, llm, buyer="b2")  # one award: no hit
+    text = memo_text(state)
+
+    assert len(draft_calls(log)) == 1 and state["memo"]["summary_source"] == "fixed"
+    assert llm.turns == 2  # the investigation only; no summary request
+    assert "No finding was recorded." in text and "valid result, not a failure" in text
+
+
+def test_every_early_exit_still_produces_a_memo(data_dir, tmp_path):
+    llm = ScriptedLLM(["repeat_winner"], happy_steps())
+    state, _, log, _ = run(data_dir, tmp_path, llm, dates=("2019-01-01", "2019-12-31"))
+    assert state["outcome"] == "no_awards" and llm.turns == 0
+    assert "No awards were found for this buyer in this range." in memo_text(state)
+    assert tool_names(log, include_draft=True) == ["data_coverage", "draft_memo"]
+
+    empty = ScriptedLLM([], [], skipped=[{"indicator": "repeat_winner", "reason": "Not needed."}])
+    state, _, _, _ = run(data_dir, tmp_path / "second", empty)
+    text = memo_text(state)
+    assert "The plan ran no indicators." in text and "Skipped repeat_winner: Not needed." in text

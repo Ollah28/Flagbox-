@@ -312,3 +312,101 @@ def verify_finding(
     if violations:
         return Outcome(False, violations)
     return Outcome(True, [], clean_severity, logged, code, rationale)
+
+
+# ---- rule 3: the summary paragraph --------------------------------------------------------------
+
+MIN_SUMMARY_CHARS = 40
+MAX_SUMMARY_CHARS = 700
+_OCID = re.compile(r"ocds-[A-Za-z0-9]+(?:[-/][A-Za-z0-9.]+)*")
+_NUMBER = re.compile(r"\d+(?:[.,]\d+)*")
+
+
+def check_summary(
+    text: str,
+    claim_texts: list[str],
+    allowed_ocids: set[str],
+    allowed_labels: set[str],
+    known_phrases: set[str],
+    known_keys: set[str],
+    buyer_name: str,
+) -> list[Violation]:
+    """SPEC 3.3 rule 3 (plus rules 2, 4 and 5) for the one paragraph the model still writes.
+
+    - Any supplier or OCID it mentions must belong to a recorded finding.
+    - Every number in it must appear in a filed claim_text.
+    - No accusing words, no names of people or companies (the buyer's own name is allowed).
+    `allowed_labels` are the supplier labels exactly as the claims print them.
+    """
+    if not isinstance(text, str) or not text.strip():
+        return [Violation("format", "The summary is empty. Write one short paragraph.")]
+    violations: list[Violation] = []
+    if "\n" in text or "\r" in text or not (MIN_SUMMARY_CHARS <= len(text) <= MAX_SUMMARY_CHARS):
+        violations.append(
+            Violation(
+                "format",
+                f"Write one paragraph on a single line, {MIN_SUMMARY_CHARS} to "
+                f"{MAX_SUMMARY_CHARS} characters.",
+            )
+        )
+
+    # Take out what is allowed to appear verbatim, then judge what is left.
+    rest = text
+    for ocid in sorted(allowed_ocids, key=len, reverse=True):
+        rest = rest.replace(ocid, " ")
+    for label in sorted(allowed_labels, key=len, reverse=True):
+        rest = rest.replace(label, " ")
+    if buyer_name:
+        rest = re.sub(re.escape(buyer_name), " ", rest, flags=re.IGNORECASE)
+
+    if _OCID.search(rest):
+        violations.append(
+            Violation("uncited_ocid", "Mention only OCIDs that belong to a recorded finding.")
+        )
+
+    padded = f" {_normalise(rest)} "
+    cited_elsewhere = any(f" {p} " in padded for p in known_phrases) or any(
+        token in set(padded.split())
+        for phrase in known_phrases
+        for token in phrase.split()
+        if len(token) >= 4 and token not in _GENERIC_NAME_WORDS
+    )
+    keyed = any(len(k) >= 3 and f" {_normalise(k)} " in padded for k in known_keys)
+    if cited_elsewhere or keyed:
+        violations.append(
+            Violation(
+                "uncited_supplier",
+                "Mention only suppliers that belong to a recorded finding, or none at all.",
+            )
+        )
+
+    allowed_numbers = {n for claim in claim_texts for n in _NUMBER.findall(claim)}
+    stray = [n for n in _NUMBER.findall(rest) if n not in allowed_numbers]
+    if stray:
+        violations.append(
+            Violation(
+                "number",
+                "Every number must appear exactly in one of the finding claims. Remove or "
+                "correct the others.",
+            )
+        )
+    if set(_normalise(rest).split()) & _NUMBER_WORDS:
+        violations.append(
+            Violation("numbers", "Remove spelled-out numbers and quantities such as 'two'.")
+        )
+    banned = _BANNED.search(text)
+    if banned:
+        violations.append(
+            Violation(
+                "banned_word",
+                f"Remove the word '{banned.group(0)}'. Never accuse; say it warrants review.",
+            )
+        )
+    if _capitalised_mid_sentence(rest):
+        violations.append(
+            Violation(
+                "proper_noun",
+                "Remove names and other capitalised words after a sentence's first word.",
+            )
+        )
+    return violations

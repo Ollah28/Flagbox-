@@ -4,6 +4,7 @@ server.py wraps these as MCP tools; tests call them directly. Every result is a 
 states totals and a `truncated` flag, and all record text passes through sanitize_text.
 """
 
+import hashlib
 import sqlite3
 from contextlib import closing
 from dataclasses import dataclass
@@ -11,8 +12,10 @@ from pathlib import Path
 from typing import Any
 
 from flagbox.agent import verify
-from flagbox.agent.runlog import iter_records, log_path, verify_log
+from flagbox.agent.runlog import iter_records, log_path, parse_run_id, verify_log
+from flagbox.data.ingest import DB_NAME
 from flagbox.data.redact import normalise_name
+from flagbox.memo import builder
 from flagbox.server import db, runstate
 from flagbox.server.config import Config
 from flagbox.server.indicators import Context, Indicator, Scope
@@ -236,6 +239,7 @@ class RunContext:
     run_id: str
     logs_dir: Path
     data_dir: Path
+    drafts_dir: Path = Path("drafts")
 
 
 def reasons_lookup(indicators: dict[str, Indicator]) -> verify.ReasonLookup:
@@ -303,4 +307,82 @@ def record_finding(
         "rationale": outcome.rationale,
         "note": "The claim text and the explanation are fixed text copied by the system; "
         "only your severity and reason_code were stored.",
+    }
+
+
+def draft_memo(run: RunContext | None, run_id: str, summary: str | None = None) -> dict[str, Any]:
+    """Build the run's memo from the verified log and stored findings, write it to drafts/, and
+    return its SHA-256. A model-written `summary` must pass SPEC rule 3 or nothing is written;
+    with no summary, a fixed sentence is used."""
+    if run is None:
+        raise db.ToolInputError("no_active_run", "No run is active, so no memo can be drafted.")
+    try:
+        wanted = parse_run_id(run_id)
+    except ValueError as error:
+        raise db.ToolInputError("bad_run_id", str(error)) from None
+    if wanted != run.run_id:
+        raise db.ToolInputError(
+            "wrong_run", "This server can draft only the memo of the run it was started for."
+        )
+    path = log_path(run.logs_dir, run.run_id)
+    checked = verify_log(path)
+    if not checked.ok:
+        raise db.ToolInputError(
+            "log_unverifiable",
+            f"The run log failed verification (line {checked.line}); no memo can be drafted.",
+        )
+    records = list(iter_records(path))
+
+    with (
+        closing(runstate.connect(run.data_dir)) as state,
+        closing(db.connect_readonly(run.data_dir / DB_NAME)) as snapshot,
+    ):
+        sources = snapshot.execute(
+            "SELECT name, url, sha256, downloaded_at, line_count FROM source_files ORDER BY file_id"
+        ).fetchall()
+        context = builder.gather(
+            records,
+            checked.records,
+            checked.head_hash,
+            runstate.kept_findings(state, run.run_id),
+            runstate.dismissed_hits(state, run.run_id),
+            sources,
+        )
+        text, source = None, "fixed"
+        if summary is not None and summary.strip():
+            phrases, keys = verify.known_supplier_terms(records)
+            violations = verify.check_summary(
+                summary,
+                [f["claim_text"] for f in context["findings"]],
+                {ref["ocid"] for f in context["findings"] for ref in f["refs"]},
+                {f["supplier_label"] for f in context["findings"] if f["supplier_label"]},
+                phrases,
+                keys,
+                context["buyer_name"],
+            )
+            if violations:
+                return {
+                    "drafted": False,
+                    "violations": [v.as_dict() for v in violations],
+                    "hint": "No memo was written. Fix every listed problem and send the summary "
+                    "again, or send no summary to use the fixed one.",
+                }
+            text, source = summary.strip(), "model"
+        if text is None:
+            text = builder.fixed_summary(context)
+        data = builder.render(context, text, source).encode("utf-8")
+        digest = hashlib.sha256(data).hexdigest()
+        run.drafts_dir.mkdir(parents=True, exist_ok=True)
+        target = run.drafts_dir / f"{run.run_id}.md"
+        target.write_bytes(data)
+        runstate.store_memo(state, run.run_id, str(target), digest, len(data), source)
+    return {
+        "drafted": True,
+        "run_id": run.run_id,
+        "path": str(target),
+        "sha256": digest,
+        "bytes": len(data),
+        "summary_source": source,
+        "findings": len(context["findings"]),
+        "log_head_hash": checked.head_hash,
     }

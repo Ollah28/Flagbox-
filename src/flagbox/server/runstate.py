@@ -65,6 +65,15 @@ CREATE TABLE IF NOT EXISTS findings (
     created_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS memos (
+    run_id         TEXT PRIMARY KEY,
+    path           TEXT NOT NULL,
+    sha256         TEXT NOT NULL,
+    bytes          INTEGER NOT NULL,
+    summary_source TEXT NOT NULL,
+    drafted_at     TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_findings_run ON findings (run_id, status);
 """
 
@@ -207,3 +216,40 @@ def reject_kept_finding(conn: sqlite3.Connection, row_id: int, reason: str) -> N
             "finding_id = NULL WHERE id = ?",
             (reason, row_id),
         )
+
+
+def store_memo(
+    conn: sqlite3.Connection,
+    run_id: str,
+    path: str,
+    sha256: str,
+    size: int,
+    summary_source: str,
+) -> None:
+    """Remember the latest draft of a run's memo. Re-drafting replaces the row."""
+    with conn:
+        conn.execute(
+            "INSERT OR REPLACE INTO memos VALUES (?, ?, ?, ?, ?, ?)",
+            (run_id, path, sha256, size, summary_source, _now()),
+        )
+
+
+def get_run(conn: sqlite3.Connection, run_id: str) -> sqlite3.Row | None:
+    return conn.execute("SELECT * FROM runs WHERE run_id = ?", (run_id,)).fetchone()
+
+
+def dismissed_hits(conn: sqlite3.Connection, run_id: str) -> list[sqlite3.Row]:
+    """Hits the model chose to dismiss, for the memo appendix (none exist until dismiss_hit)."""
+    return conn.execute(
+        "SELECT f.hit_id, f.reason_code, f.rationale, h.claim_text "
+        "FROM findings f JOIN hits h ON h.run_id = f.run_id AND h.hit_id = f.hit_id "
+        "WHERE f.run_id = ? AND f.status = 'dismissed' ORDER BY f.id",
+        (run_id,),
+    ).fetchall()
+
+
+def count_rejected(conn: sqlite3.Connection, run_id: str) -> int:
+    row = conn.execute(
+        "SELECT COUNT(*) FROM findings WHERE run_id = ? AND status = 'rejected'", (run_id,)
+    ).fetchone()
+    return int(row[0])

@@ -52,6 +52,16 @@ M2 in progress (M2.1 done). M0.2 (model spike) still to run by the developer; M2
   `repeat_winner.py`), each with an `applies(hit)` rule so it can only be chosen when true. Real run on Kenya
   Literature Bureau after the change: 2 verified findings, 0 refusals, 2 min 23 s; log verifies. 237 tests
   pass, ruff and pyright clean.
+- Mon 12 Oct: **M3.1** `draft_memo` and the memo (`src/flagbox/memo/`, template `template.md.j2`). Sections:
+  summary, findings (verbatim claim, fixed reason, OCID, source file and line, portal page), coverage, checks run
+  with their settings, checks skipped or not completed, dismissed-hits appendix, data-quality notes, caveats,
+  sources with hashes. Deterministic bytes, SHA-256 returned and stored (`memos` table). The model's summary is
+  checked inside the tool (rule 3) and replaced by a fixed one after two refusals. A `draft` node follows
+  `verify`; every route ends in a memo. `flagbox run` now prints the whole memo and its hash. Real runs on
+  qwen3:8b: Kenya Literature Bureau 1 min 15 s with a model summary that passed on the second attempt, and 2 min
+  55 s when both attempts were refused and the fixed one was used; Kenya Maritime Authority 1 min 8 s, "no
+  finding". 275 tests pass, ruff and pyright clean; disabling the uncited-supplier and number checks makes 4
+  tests fail. SPEC D32.
 
 ## M1.3 results in one screen
 - **Indicators chosen:** `repeat_winner`, `value_outlier`, `non_competitive_share` (all above 60% joint
@@ -72,7 +82,7 @@ M2 in progress (M2.1 done). M0.2 (model spike) still to run by the developer; M2
 
 ## Next
 - **Developer:** M0.2 (model tool-calling spike, needs Ollama), then paste the result into `docs/spikes.md`.
-- **Commit** (see the warning under Known issues), tag `m2`, then M3.1 `draft_memo`.
+- Commit and push (see Known issues), then **M3.2**: the human gate and filing (`interrupt()`, approval bound to the memo's SHA-256, the Filesystem server's `write_file` called by code, no-overwrite check).
 - M0.2 (formal S3 measurement: 10 multi-turn sequences, then qwen3:14b) is still open. Ollama is reachable from this session, so it can be run here; say so and it will be done.
 
 ## Measurements
@@ -89,6 +99,13 @@ M2 in progress (M2.1 done). M0.2 (model spike) still to run by the developer; M2
 | 11 Oct | qwen3:8b in Ollama at num_ctx 16384 | 8.3 GB loaded, 92% CPU / 8% GPU (Quadro M1000M, 2 GB), 5.6 GB RAM free before loading |
 
 ## Known issues
+- **The 8B model is weak at the summary paragraph.** First attempts usually add a count word ("Two suppliers")
+  and are refused; with a style example in the prompt the second attempt passes, but it then copies the
+  example almost word for word, so the "model-written" summary is close to templated. Left as is: the rules
+  hold either way, and the memo says which kind of summary it has. An eval candidate ("summary pass rate"),
+  and a choice to revisit: drop the model summary and always use the fixed one.
+- Plan "skip" reasons are still free model text (checked by the wording rules). The empty-plan case lets the
+  model skip the only indicator; fine while there is one indicator, to revisit when there are three.
 - **NOTHING SINCE M0.1 IS COMMITTED OR PUSHED.** `git log` shows only the 8 Oct commits; about 40 files and
   the whole of M0.3 to M2.4 are uncommitted, and there is no `m1` tag. HANDOFF says a daily push is the
   evidence the work was done in the submission period. Commit and push now (suggested: one commit per

@@ -54,6 +54,7 @@ class AgentState(RunIdentity, total=False):
     plan: list[str]
     outcome: str  # why the run stopped early, or "investigated"
     verification: dict[str, Any]
+    memo: dict[str, Any]
 
 
 @dataclass
@@ -338,6 +339,7 @@ def build_graph(deps: Deps) -> Any:
             "hits_seen": len(seen),
             "undecided": sorted(set(seen) - set(kept)),
             "checks": checks,
+            "gaps": list(deps.gaps),
         }
         deps.log.append("verify", **summary)
         deps.say(
@@ -346,18 +348,71 @@ def build_graph(deps: Deps) -> Any:
         )
         return {"verification": summary}
 
+    async def draft(state: AgentState) -> dict[str, Any]:
+        """Ask the model for a summary, let draft_memo check it, and fall back to fixed text."""
+        run_id = state["run_id"]
+        with closing(runstate.connect(deps.data_dir)) as conn:
+            findings = runstate.kept_findings(conn, run_id)
+
+        async def ask_server(arguments: dict[str, Any]) -> dict[str, Any]:
+            started = time.monotonic()
+            result = await deps.session.call_tool("draft_memo", arguments)
+            deps.tool_calls += 1
+            payload: dict[str, Any] = result.structuredContent or {}
+            deps.say(progress_line(deps, "draft_memo", payload, time.monotonic() - started))
+            return payload
+
+        memo: dict[str, Any] | None = None
+        if findings:
+            listing = "\n".join(
+                f"- {row['claim_text']} Severity: {row['severity']}. {row['rationale']}"
+                for row in findings
+            )
+            feedback = ""
+            for _ in range(2):  # SPEC: if the summary fails twice, a fixed summary is used
+                prompt = (
+                    prompts.SUMMARY.format(
+                        buyer_name=state["buyer_name"],
+                        date_from=state["date_from"],
+                        date_to=state["date_to"],
+                        findings=listing,
+                    )
+                    + feedback
+                )
+                reply = await invoke_with_retry(
+                    deps.llm, [SystemMessage(prompts.SYSTEM), HumanMessage(prompt)]
+                )
+                deps.count_llm(reply)
+                payload = await ask_server(
+                    {"run_id": run_id, "summary": str(reply.content).strip()}
+                )
+                if payload.get("drafted"):
+                    memo = payload
+                    break
+                reasons = " ".join(v["message"] for v in payload.get("violations", []))
+                feedback = f"\n\nYour previous summary was refused. {reasons} Write it again."
+            if memo is None:
+                deps.gaps.append("the model's summary failed the rules twice; fixed summary used")
+        if memo is None:
+            payload = await ask_server({"run_id": run_id})
+            memo = payload if payload.get("drafted") else None
+        return {"memo": memo} if memo else {"outcome": "memo_failed"}
+
     graph = StateGraph(AgentState)
     graph.add_node("check_coverage", check_coverage)
     graph.add_node("plan", plan)
     graph.add_node("investigate", investigate)
     graph.add_node("verify", verify)
+    graph.add_node("draft", draft)
     graph.add_edge(START, "check_coverage")
+    # Every route ends in a memo, even "no awards" or "nothing runnable" (SPEC section 2).
     graph.add_conditional_edges(
-        "check_coverage", lambda s: END if s.get("outcome") else "plan", ["plan", END]
+        "check_coverage", lambda s: "draft" if s.get("outcome") else "plan", ["plan", "draft"]
     )
     graph.add_conditional_edges(
-        "plan", lambda s: "investigate" if s.get("plan") else END, ["investigate", END]
+        "plan", lambda s: "investigate" if s.get("plan") else "draft", ["investigate", "draft"]
     )
     graph.add_edge("investigate", "verify")
-    graph.add_edge("verify", END)
+    graph.add_edge("verify", "draft")
+    graph.add_edge("draft", END)
     return graph.compile()

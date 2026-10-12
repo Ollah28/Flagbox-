@@ -1,0 +1,136 @@
+# Screening memo (DRAFT): {{ buyer_name }}
+
+**Not approved. Not filed.** This draft is a screening aid for a human reviewer. It lists patterns in public procurement records that warrant review. It does not establish or suggest wrongdoing, and it makes no recommendation about any award, payment or action.
+
+| | |
+|---|---|
+| Buyer | {{ buyer_name|cell }} (key {{ buyer_key|cell }}) |
+| Tender closing dates | {{ date_from }} to {{ date_to }} |
+| Run | `{{ run_id }}` |
+| Started | {{ started_at }} |
+| Model and prompts | {{ model|cell }}, prompts {{ prompt_version|cell }} |
+| Run log at drafting | {{ log_records }} records, head hash `{{ log_head }}` |
+
+## Summary
+
+{{ summary }}
+
+*{{ summary_label }}*
+
+## Findings
+
+{% if findings %}
+{% for f in findings %}
+### {{ loop.index }}. {{ f.claim_text|cell }}
+
+- Severity: {{ f.severity }}
+- Why it warrants review: {{ f.rationale|cell }}
+- Finding {{ f.finding_id }}, from tool call {{ f.tool_call_id }}
+
+| OCID | Source file | Line | Portal page |
+|---|---|---|---|
+{% for ref in f.refs %}
+| {{ ref.ocid|cell }} | {{ ref.file }} | {{ ref.line_no }} | {% if ref.portal_url %}[tender page]({{ ref.portal_url }}){% else %}none{% endif %} |
+{% endfor %}
+{% if f.more_processes %}
+
+{{ f.more_processes }} further tender process(es) are not listed here to keep the memo short; the run log has the full result.
+{% endif %}
+
+{% endfor %}
+{% else %}
+No finding was recorded. {{ no_findings_reason }}
+{% endif %}
+
+## What the data covered
+
+{% if coverage %}
+| Measure | Value |
+|---|---|
+| Tender processes with a closing date in range | {{ coverage.processes }} |
+| Awards in range | {{ coverage.awards }} |
+{% for name, value in coverage.usable %}
+| Awards with {{ name }} | {{ value }}% |
+{% endfor %}
+
+| Indicator | Share of awards it can use | Could it run? |
+|---|---|---|
+{% for item in coverage.runnable %}
+| {{ item.indicator }} | {{ item.share }} | {{ "yes" if item.runnable else "no" }} |
+{% endfor %}
+
+An indicator runs only when at least {{ coverage.min_share }}% of the awards have every field it needs.
+{% else %}
+The coverage check was not recorded for this run.
+{% endif %}
+
+## Checks run
+
+{% if checks %}
+| Indicator | Hits | Awards checked | Settings used |
+|---|---|---|---|
+{% for c in checks %}
+| {{ c.indicator }} | {{ c.hits_total }} | {{ c.awards_checked }} | {{ c.settings|cell }} |
+{% endfor %}
+
+The settings come from `config/indicators.yaml` and cannot be changed by the model.
+{% else %}
+No indicator was run.
+{% endif %}
+
+## Checks skipped or not completed
+
+{% if skipped or gaps or undecided or demoted %}
+{% for item in skipped %}
+- Skipped {{ item.indicator|cell }}: {{ item.reason|cell }}
+{% endfor %}
+{% for gap in gaps %}
+- Not completed: {{ gap|cell }}
+{% endfor %}
+{% if undecided %}
+- {{ undecided }} hit(s) received no decision, so they do not appear as findings.
+{% endif %}
+{% if demoted %}
+- {{ demoted }} finding(s) were withdrawn because they failed the final check.
+{% endif %}
+{% else %}
+Nothing was skipped. Every planned check ran and every hit received a decision.
+{% endif %}
+
+## Appendix A: hits the model dismissed
+
+{% if dismissed %}
+{% for d in dismissed %}
+- {{ d.claim_text|cell }} Reason: {{ d.rationale|cell }}
+{% endfor %}
+{% else %}
+No hits were dismissed in this run.
+{% endif %}
+
+## Appendix B: data-quality notes
+
+{% for line in dq_lines %}
+- {{ line|cell }}
+{% endfor %}
+- Tender start dates in the source are unreliable and are not used. The tender closing date decides which processes fall in the range.
+- Some processes have no usable closing date and are left out of any date range.
+
+## Caveats
+
+{% for caveat in caveats %}
+- {{ caveat }}
+{% endfor %}
+
+## Sources
+
+| File | Dataset URL | SHA-256 | Downloaded | Lines |
+|---|---|---|---|---|
+{% for s in sources %}
+| {{ s.file }} | {{ s.url|cell }} | `{{ s.sha256 }}` | {{ s.downloaded_at }} | {{ s.lines }} |
+{% endfor %}
+
+Records come from the Kenya Public Procurement Regulatory Authority open data, as published through the Open Contracting Partnership data registry. The publisher states no licence for this dataset at the time of writing. Only processes with at least one award and a closing date before the data was loaded are included.
+
+---
+
+Drafted by Flagbox software for a human reviewer. The findings and their wording come from fixed templates and the source records. The summary is {{ summary_source_note }}.

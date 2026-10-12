@@ -3,7 +3,7 @@
 Change a prompt => change PROMPT_VERSION. The version is written into every run's log.
 """
 
-PROMPT_VERSION = "m2.5-1"
+PROMPT_VERSION = "m3.1-2"
 
 SYSTEM = (
     "You are Flagbox, an assistant that helps a procurement oversight officer review public "
@@ -39,4 +39,21 @@ INVESTIGATE = (
     "twice per hit).\n"
     "4. When every hit has a finding, or an indicator returned no hits, reply with the single "
     "word DONE."
+)
+
+SUMMARY = (
+    "Buyer: {buyer_name}. Tender closing dates {date_from} to {date_to}.\n"
+    "The system recorded these findings:\n{findings}\n\n"
+    "Write ONE short paragraph, two or three sentences on a single line, summarising them for an "
+    "oversight officer. Rules:\n"
+    "- Use only what the findings above say.\n"
+    "- Do not write any digits or spelled-out numbers.\n"
+    "- Do not name any supplier, company or person. Say 'the suppliers' or 'one supplier'.\n"
+    "- Never accuse anyone or suggest wrongdoing.\n"
+    "- Say that a human reviewer should examine these patterns.\n"
+    "- Do not describe amounts or time in your own words (no 'significant', 'large', 'short').\n"
+    "Follow this example of the style, changing only what the findings require:\n"
+    "Some suppliers received a share of this buyer's award value at or above the review "
+    "threshold. A human reviewer should examine these patterns against the source records.\n"
+    "Reply with the paragraph only."
 )
