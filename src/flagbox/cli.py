@@ -50,6 +50,25 @@ def build_parser() -> argparse.ArgumentParser:
     )
     runner.add_argument("--drafts-dir", type=Path, default=Path("drafts"), help="Default: ./drafts")
     runner.add_argument("--filed-dir", type=Path, default=Path("filed"), help="Default: ./filed")
+    base = commands.add_parser(
+        "baseline",
+        help="No-model baseline: run every runnable indicator and keep every hit (for comparison).",
+    )
+    base.add_argument("--buyer", required=True, help="The buyer's name")
+    base.add_argument("--from", dest="date_from", required=True, help="First closing date")
+    base.add_argument("--to", dest="date_to", required=True, help="Last closing date")
+    base.add_argument("--data-dir", type=Path, default=Path("data"), help="Default: ./data")
+    base.add_argument(
+        "--config", type=Path, default=Path("config/indicators.yaml"), help="Indicator settings"
+    )
+    base.add_argument("--json", action="store_true", help="Print machine-readable JSON")
+    setup = commands.add_parser(
+        "setup",
+        help="One-command setup (Node, npm ci, data, snapshot, model). Safe to repeat.",
+    )
+    setup.add_argument("--data-dir", type=Path, default=Path("data"), help="Default: ./data")
+    setup.add_argument("--force", action="store_true", help="Reinstall and rebuild every step")
+    setup.add_argument("--skip-model", action="store_true", help="Do not check or pull the model")
     verify = commands.add_parser(
         "verify-log", help="Check that a run's log has not been edited (hash chain)."
     )
@@ -127,6 +146,45 @@ def _run_agent(args: argparse.Namespace) -> int:
         return 1
 
 
+def _run_baseline(args: argparse.Namespace) -> int:
+    import json
+
+    from flagbox.baseline import BaselineError, run_baseline
+
+    try:
+        result = run_baseline(args.data_dir, args.config, args.buyer, args.date_from, args.date_to)
+    except BaselineError as error:
+        print(error)
+        return 1
+    if args.json:
+        print(json.dumps(result, indent=2))
+        return 0
+    print(
+        f"BASELINE (no model): {result['buyer_name']}, {result['date_from']} to {result['date_to']}"
+    )
+    for check in result["checks"]:
+        print(
+            f"  {check['indicator']}: {check['hits_total']} hits "
+            f"among {check['awards_checked']} awards"
+        )
+    for finding in result["findings"]:
+        print(f"  - {finding['claim_text']}")
+        print(f"    OCIDs: {', '.join(finding['ocids'])}   ({finding['decision']})")
+    if not result["findings"]:
+        print("  No hits. No indicator crossed its threshold.")
+    print(f"Done in {result['seconds']} s with {result['model_calls']} model calls.")
+    return 0
+
+
+def _run_setup(args: argparse.Namespace) -> int:
+    from flagbox.setup_cmd import run_setup, summary
+
+    steps = run_setup(args.data_dir, force=args.force, skip_model=args.skip_model)
+    ok, message = summary(steps)
+    print(message)
+    return 0 if ok else 1
+
+
 def _run_tools(data_dir: Path) -> int:
     from flagbox.mcp_client import list_server_tools, server_parameters
 
@@ -156,6 +214,10 @@ def main(argv: list[str] | None = None) -> int:
         return _run_tools(args.data_dir)
     if args.command == "run":
         return _run_agent(args)
+    if args.command == "setup":
+        return _run_setup(args)
+    if args.command == "baseline":
+        return _run_baseline(args)
     if args.command == "verify-log":
         return _run_verify_log(args.run_id, args.logs_dir)
     return 1  # unreachable: argparse rejects unknown commands

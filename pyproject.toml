@@ -46,6 +46,7 @@ select = ["E", "F", "I", "B", "UP"]
 # Spikes are throwaway experiments, not shipped code: style rules relaxed.
 "spikes/*" = ["E401", "E501", "I001"]
 "scripts/*" = ["E501"]  # long strings that build the markdown report
+"evals/*" = ["E501"]  # eval tooling: long task descriptions and report lines
 
 [tool.pyright]
 include = ["src", "tests"]
