@@ -27,3 +27,5 @@ desktop.ini
 
 # Eval scratch space (results are committed, work files are not)
 /evals/work/
+/evals/work_real/
+/evals/work_e9s/

@@ -1,0 +1,158 @@
+{
+  "meta": {
+    "model": "qwen3:8b",
+    "date": "2026-10-15",
+    "commit": "5f2854c",
+    "prompt_version": "m3.1-2",
+    "repeats": 2,
+    "free_ram_gb": 1.6
+  },
+  "runs": [
+    {
+      "task": "E1",
+      "repeat": 1,
+      "passed": true,
+      "checks": {
+        "memo_drafted": true,
+        "log_verifies_and_is_complete": true,
+        "at_least_one_finding": true,
+        "no_finding_failed_the_final_check": true,
+        "every_hit_got_a_decision": true
+      },
+      "seconds": 145.2,
+      "run_id": "4ed4ff30-07a7-41cb-a644-21421a09d988",
+      "status": "not_decided",
+      "tokens_in": 6066,
+      "tokens_out": 193,
+      "llm_calls": 6,
+      "tool_calls": 7,
+      "findings": 2,
+      "cited_ocids": [
+        "ocds-5whusi-222828-KLB/RT/18/2023-2024"
+      ],
+      "free_ram_gb": 1.6,
+      "error": ""
+    },
+    {
+      "task": "E1",
+      "repeat": 2,
+      "passed": true,
+      "checks": {
+        "memo_drafted": true,
+        "log_verifies_and_is_complete": true,
+        "at_least_one_finding": true,
+        "no_finding_failed_the_final_check": true,
+        "every_hit_got_a_decision": true
+      },
+      "seconds": 79.4,
+      "run_id": "3622025f-8773-4e86-9f88-23cfba740906",
+      "status": "not_decided",
+      "tokens_in": 6066,
+      "tokens_out": 193,
+      "llm_calls": 6,
+      "tool_calls": 7,
+      "findings": 2,
+      "cited_ocids": [
+        "ocds-5whusi-222828-KLB/RT/18/2023-2024"
+      ],
+      "free_ram_gb": 1.2,
+      "error": ""
+    },
+    {
+      "task": "E7R",
+      "repeat": 1,
+      "passed": false,
+      "checks": {
+        "both_hits_kept": true,
+        "every_single_process_hit_gets_lots_of_one_tender": false
+      },
+      "seconds": 78.7,
+      "run_id": "05a64773-aabc-4d34-983c-b68e0b1e229d",
+      "status": "not_decided",
+      "tokens_in": 6066,
+      "tokens_out": 193,
+      "llm_calls": 6,
+      "tool_calls": 7,
+      "findings": 2,
+      "cited_ocids": [
+        "ocds-5whusi-222828-KLB/RT/18/2023-2024"
+      ],
+      "free_ram_gb": 1.2,
+      "error": ""
+    },
+    {
+      "task": "E7R",
+      "repeat": 2,
+      "passed": false,
+      "checks": {
+        "both_hits_kept": true,
+        "every_single_process_hit_gets_lots_of_one_tender": false
+      },
+      "seconds": 79.9,
+      "run_id": "09bdef14-1a69-48f2-81b0-070c4b7bac05",
+      "status": "not_decided",
+      "tokens_in": 6066,
+      "tokens_out": 193,
+      "llm_calls": 6,
+      "tool_calls": 7,
+      "findings": 2,
+      "cited_ocids": [
+        "ocds-5whusi-222828-KLB/RT/18/2023-2024"
+      ],
+      "free_ram_gb": 1.2,
+      "error": ""
+    }
+  ],
+  "summary": [
+    {
+      "task": "E1",
+      "title": "Known small buyer, full run (real data)",
+      "passes": 2,
+      "runs": 2,
+      "mean_seconds": 112.3,
+      "mean_tokens_in": 6066,
+      "overlap": 1.0,
+      "failing_checks": {},
+      "errors": []
+    },
+    {
+      "task": "E7R",
+      "title": "Triage on real data: the specific true reason",
+      "passes": 0,
+      "runs": 2,
+      "mean_seconds": 79.3,
+      "mean_tokens_in": 6066,
+      "overlap": 1.0,
+      "failing_checks": {
+        "every_single_process_hit_gets_lots_of_one_tender": 2
+      },
+      "errors": []
+    }
+  ],
+  "baseline": [
+    {
+      "task": "E1",
+      "baseline_hits": 2,
+      "baseline_seconds": 0.08,
+      "baseline_model_calls": 0,
+      "agent_mean_seconds": 112.3,
+      "agent_findings": [
+        2,
+        2
+      ],
+      "agent_cited_same_records_as_baseline": [
+        true,
+        true
+      ]
+    },
+    {
+      "task": "E3",
+      "baseline_hits": 2,
+      "baseline_seconds": 0.01,
+      "baseline_model_calls": 0,
+      "agent_mean_seconds": null,
+      "agent_findings": [],
+      "agent_cited_same_records_as_baseline": []
+    }
+  ]
+}
