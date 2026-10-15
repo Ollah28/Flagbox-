@@ -77,6 +77,12 @@ M2 in progress (M2.1 done). M0.2 (model spike) still to run by the developer; M2
   logging wrapper adds would have been glued onto the last filename of a directory listing, hiding an
   existing file from the duplicate check (so `write_file` would have overwritten it).
 
+- Thu 15 Oct: README (setup, run, how it works, built vs borrowed servers, safety table, data, honest limits,
+  how to add an indicator) and ARCHITECTURE.md written. `flagbox baseline`, `flagbox setup` and the `evals/`
+  runner with fixture buyers added (339 tests). **The 3-repeat model evals have NOT been run** (the overnight run
+  was killed when the session ended); the README and EVALS state this plainly. `flagbox setup` was run once on
+  this machine (all steps skip correctly) but not yet in a fresh clone.
+
 ## M1.3 results in one screen
 - **Indicators chosen:** `repeat_winner`, `value_outlier`, `non_competitive_share` (all above 60% joint
   coverage). Dropped: `single_bidder` (`numberOfTenderers` is 0% populated) and `short_window`
