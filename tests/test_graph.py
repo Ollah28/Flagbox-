@@ -284,7 +284,8 @@ def test_an_unusable_plan_falls_back_to_all_runnable_indicators(data_dir, tmp_pa
     llm = ScriptedLLM(["repeat_winner"], happy_steps())
     llm.break_plan = True
     state, _, log, lines = run(data_dir, tmp_path, llm)
-    assert state["plan"] == ["repeat_winner"] and state["verification"]["kept"] == 2
+    assert set(state["plan"]) == {"repeat_winner", "non_competitive_share"}
+    assert state["verification"]["kept"] == 2
     plan = next(r for r in iter_records(log.path) if r["event"] == "plan")
     assert plan["fallback"] is True and any("plan unusable" in line for line in lines)
 

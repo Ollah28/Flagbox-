@@ -395,6 +395,12 @@ def test_a_hit_cannot_be_decided_twice(run, indicators):
     assert tools.record_finding(ctx, indicators, hit_id, "low", CONTEXT)["accepted"] is True
     again = tools.record_finding(ctx, indicators, hit_id, "high", CONTEXT)
     assert again["accepted"] is False and again["violations"][0]["rule"] == "already_decided"
+    # the refusal points at the hit that still needs a decision, so a model that loops is steered
+    other = result["hits"][1]["hit_id"]
+    assert other in again["violations"][0]["message"]
+    assert tools.record_finding(ctx, indicators, other, "low", CONTEXT)["accepted"] is True
+    last = tools.record_finding(ctx, indicators, hit_id, "high", CONTEXT)
+    assert "you are done" in last["violations"][0]["message"]
 
 
 def test_a_hit_from_another_run_is_unknown(run, indicators, data_dir, tmp_path):

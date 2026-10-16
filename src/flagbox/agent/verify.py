@@ -139,6 +139,16 @@ def find_hit(records: Iterable[dict[str, Any]], hit_id: str) -> LoggedHit | None
     return None
 
 
+def all_hit_ids(records: Iterable[dict[str, Any]]) -> list[str]:
+    """Every hit_id any tool returned in this run, in the order first returned."""
+    seen: dict[str, None] = {}
+    for _, result in _tool_results(records):
+        for hit in result.get("hits") or []:
+            if isinstance(hit, dict) and isinstance(hit.get("hit_id"), str):
+                seen.setdefault(hit["hit_id"], None)
+    return list(seen)
+
+
 def _walk_supplier_labels(value: Any) -> Iterable[str]:
     """Every supplier label, supplier_key and supplier string anywhere in a tool result."""
     if isinstance(value, dict):

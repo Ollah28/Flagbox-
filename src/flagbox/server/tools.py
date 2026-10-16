@@ -227,7 +227,7 @@ def run_indicator(
     )
     if not result["hits"]:
         result["message"] = (
-            "No supplier crossed the threshold. This is a valid result, not an error."
+            "No pattern crossed the threshold. This is a valid result, not an error."
         )
     return fit(result, "hits", cfg.limits.max_output_tokens)
 
@@ -280,9 +280,20 @@ def record_finding(
     with closing(runstate.connect(run.data_dir)) as conn:
         violations = list(outcome.violations)
         if outcome.ok and runstate.has_decision(conn, run.run_id, hit_id):
+            waiting = [
+                other
+                for other in verify.all_hit_ids(iter_records(path))
+                if not runstate.has_decision(conn, run.run_id, other)
+            ]
+            advice = (
+                "Hits still waiting for a decision: " + ", ".join(waiting) + "."
+                if waiting
+                else "Every hit has a decision, so you are done."
+            )
             violations = [
                 verify.Violation(
-                    "already_decided", "This hit already has a decision in this run. Move on."
+                    "already_decided",
+                    f"This hit already has a decision in this run. Do not repeat it. {advice}",
                 )
             ]
         if violations or outcome.hit is None or outcome.severity is None:

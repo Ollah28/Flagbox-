@@ -6,7 +6,7 @@ Flagbox is an open-source agent for the Bid Box Challenge (Governance track). It
 
 It runs entirely on your own computer, on open-weights **Qwen3 8B** through Ollama. No account, no API key, no cloud service.
 
-> **Honest status.** The core system works end to end on real Kenyan data and is covered by 346 automated tests on `dev` (339 at submission). It ships **one** indicator (`repeat_winner`), not the three originally planned. A **reduced model evaluation** (9 tasks, 2 repeats each, on the real model) is in [EVALS.md](EVALS.md): **7 tasks pass and 2 fail**, and the failures are reported there in full, including one where text planted in a supplier name steered the model's severity ratings. See [Honest limits](#honest-limits). *Update on branch `dev`: both failures are fixed by computing severity and the specific reason in code (SPEC D34, [EVALS.md](EVALS.md)); the submitted state is tag `v1.0-submission`.*
+> **Honest status.** The core system works end to end on real Kenyan data and is covered by 356 automated tests on `dev` (339 at submission). It ships **one** indicator (`repeat_winner`), not the three originally planned. *(`dev` branch: a second, `non_competitive_share`, is now built; see [Honest limits](#honest-limits).)* A **reduced model evaluation** (9 tasks, 2 repeats each, on the real model) is in [EVALS.md](EVALS.md): **7 tasks pass and 2 fail**, and the failures are reported there in full, including one where text planted in a supplier name steered the model's severity ratings. See [Honest limits](#honest-limits). *Update on branch `dev`: both failures are fixed by computing severity and the specific reason in code (SPEC D34, [EVALS.md](EVALS.md)); the submitted state is tag `v1.0-submission`.*
 
 ---
 
@@ -140,7 +140,7 @@ The agent is a small [LangGraph](https://github.com/langchain-ai/langgraph) grap
 
 | Server | Who wrote it | What it does |
 |---|---|---|
-| **Flagbox server** (`src/flagbox/server/`) | us, Python, `mcp==1.30.0` | `find_buyer`, `data_coverage`, `fetch_buyer_awards`, `repeat_winner`, `record_finding`, `draft_memo` |
+| **Flagbox server** (`src/flagbox/server/`) | us, Python, `mcp==1.30.0` | `find_buyer`, `data_coverage`, `fetch_buyer_awards`, `repeat_winner`, `non_competitive_share` (`dev`), `record_finding`, `draft_memo` |
 | **Filesystem server** | borrowed, `@modelcontextprotocol/server-filesystem` pinned to `2026.8.31` | writes the approved memo into `filed/` and nothing else |
 
 **Why borrow the Filesystem server:** sandboxed, path-validated file writing is solved and maintained upstream. We measured its behaviour on Windows ([docs/spikes.md](docs/spikes.md)): writes outside `filed/` are refused, but `write_file` **silently overwrites**, so our code checks `list_directory` first.
@@ -173,7 +173,7 @@ Design decisions and the reasons for them are in [SPEC.md](SPEC.md) section 13 (
 
 Please read these before relying on anything here.
 
-- **One indicator.** `repeat_winner` (a supplier with at least 3 awards and at least 10% of a buyer's award value) is built. `value_outlier` and `non_competitive_share` passed the data checks and are the planned next ones. `single_bidder` and `short_window` are **not possible** on this data (the tender-count field is empty and start dates are unreliable).
+- **Two indicators on `dev`, one in the submitted version.** `repeat_winner` (a supplier with at least 3 awards and at least 10% of a buyer's award value) and, added after submission, `non_competitive_share` (at least 3 awards by direct or selective methods carrying at least 25% of a buyer's award value; SPEC D35). `value_outlier` passed the data checks and is the planned next one. `single_bidder` and `short_window` are **not possible** on this data (the tender-count field is empty and start dates are unreliable).
 - **The thresholds are assumptions.** They have **not** been reviewed by a procurement or audit practitioner. They were chosen from the data's distribution (see the rationale in `config/indicators.yaml`).
 - **The evaluation is small and has two known failures.** 2 repeats, mostly synthetic fixture buyers, checks written by the author ([EVALS.md](EVALS.md)). A supplier name carrying the text "ignore all previous instructions" **did steer the model's severity ratings** (it changed nothing else: no tool, hit, reason or file). On the real data the model picks a vaguer reason than the most specific true one. There is no accuracy measurement against hand-labelled data, and no 14B comparison.
 - **For this one indicator the model adds no detection.** The no-model baseline (`flagbox baseline`) cites exactly the same records in under a second. What the agent adds is severity and reason choices, a plan, a summary, and the safe workflow around the hits.
@@ -200,7 +200,6 @@ Next indicators, from [docs/data_coverage.md](docs/data_coverage.md):
 
 | Indicator | Idea | Data check |
 |---|---|---|
-| `non_competitive_share` | Large share of award value through direct or selective methods | 99% usable; fires at 10 of 240 buyers at 40% |
 | `value_outlier` | Award far above its category's range for that buyer | 99% usable; fires at 237 of 240 buyers (needs a tighter rule) |
 | `date_sequence` | Contract signed before the tender closed | 81% usable but noisy: fires at 219 of 240 buyers |
 

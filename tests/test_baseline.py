@@ -12,13 +12,20 @@ RANGE = ("2024-01-01", "2024-12-31")
 
 def test_the_baseline_keeps_every_hit_with_no_model_and_no_judgement(data_dir: Path):
     result = run_baseline(data_dir, CONFIG_PATH, "Buyer One", *RANGE)
-    assert result["model_calls"] == 0 and result["indicators_run"] == ["repeat_winner"]
+    assert result["model_calls"] == 0 and sorted(result["indicators_run"]) == [
+        "non_competitive_share",
+        "repeat_winner",
+    ]
     assert [f["decision"] for f in result["findings"]] == ["kept without triage"] * 2
     assert all(f["severity"] is None and f["reason_code"] is None for f in result["findings"])
     assert {o for f in result["findings"] for o in f["ocids"]} == {"p1", "p2", "p3", "p4"}
-    assert result["checks"] == [
-        {"indicator": "repeat_winner", "hits_total": 2, "awards_checked": 10}
-    ]
+    by_name = {c["indicator"]: c for c in result["checks"]}
+    assert by_name["repeat_winner"] == {
+        "indicator": "repeat_winner",
+        "hits_total": 2,
+        "awards_checked": 10,
+    }
+    assert by_name["non_competitive_share"]["hits_total"] == 0  # every fixture award is "open"
 
 
 def test_the_baseline_uses_the_same_hits_as_the_agent_tools(data_dir: Path):

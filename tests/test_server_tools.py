@@ -65,8 +65,13 @@ def test_data_coverage_reports_counts_and_runnable_indicators(conn, cfg, indicat
     # both together on 10 of 14 (71%), because one award with a value has no supplier.
     assert result["usable_pct"]["award_value"] == 79
     assert result["usable_pct"]["supplier_id"] == 93
-    (entry,) = result["runnable_indicators"]
-    assert entry == {"indicator": "repeat_winner", "joint_coverage_pct": 71, "runnable": True}
+    entries = {e["indicator"]: e for e in result["runnable_indicators"]}
+    assert entries["repeat_winner"] == {
+        "indicator": "repeat_winner",
+        "joint_coverage_pct": 71,
+        "runnable": True,
+    }
+    assert entries["non_competitive_share"]["runnable"] is True  # needs only value and method
 
 
 def test_data_coverage_empty_range_is_not_runnable_and_says_why(conn, cfg, indicators):
@@ -85,11 +90,13 @@ def test_data_coverage_marks_an_indicator_not_runnable_when_too_sparse(tmp_path,
 
     with closing(db.connect_readonly(data_dir / "flagbox.sqlite")) as connection:
         result = tools.data_coverage(connection, cfg, indicators, "b1", *RANGE)
-    assert result["runnable_indicators"][0] == {
+    entries = {e["indicator"]: e for e in result["runnable_indicators"]}
+    assert entries["repeat_winner"] == {
         "indicator": "repeat_winner",
         "joint_coverage_pct": 0,
         "runnable": False,
     }
+    assert entries["non_competitive_share"]["runnable"] is True  # a value and a method are enough
 
 
 # ---- fetch_buyer_awards ----------------------------------------------------------------------

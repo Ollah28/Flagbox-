@@ -1,0 +1,259 @@
+{
+  "meta": {
+    "model": "qwen3:8b",
+    "date": "2026-10-16",
+    "commit": "009d1ea",
+    "prompt_version": "m3.1-3",
+    "repeats": 2,
+    "free_ram_gb": 7.4
+  },
+  "runs": [
+    {
+      "task": "E1",
+      "repeat": 1,
+      "passed": true,
+      "checks": {
+        "memo_drafted": true,
+        "log_verifies_and_is_complete": true,
+        "at_least_one_finding": true,
+        "no_finding_failed_the_final_check": true,
+        "every_hit_got_a_decision": true
+      },
+      "seconds": 351.1,
+      "run_id": "11d83164-3fe8-4f30-b577-0742b401d37a",
+      "status": "not_decided",
+      "tokens_in": 41107,
+      "tokens_out": 474,
+      "llm_calls": 13,
+      "tool_calls": 12,
+      "findings": 3,
+      "cited_ocids": [
+        "ocds-5whusi-221618-KLB/RT/12/23-24",
+        "ocds-5whusi-222826-KLB/RT/21/2023-2024",
+        "ocds-5whusi-222828-KLB/RT/18/2023-2024",
+        "ocds-5whusi-245220-KLB/RT/11/24-25",
+        "ocds-5whusi-245225-KLB/RT/22/2024-2025",
+        "ocds-5whusi-KLB/RT/16/22-23",
+        "ocds-5whusi-KLB/RT/17/22-23",
+        "ocds-5whusi-KLB/RT/19/22-23"
+      ],
+      "free_ram_gb": 7.4,
+      "error": ""
+    },
+    {
+      "task": "E1",
+      "repeat": 2,
+      "passed": true,
+      "checks": {
+        "memo_drafted": true,
+        "log_verifies_and_is_complete": true,
+        "at_least_one_finding": true,
+        "no_finding_failed_the_final_check": true,
+        "every_hit_got_a_decision": true
+      },
+      "seconds": 254.4,
+      "run_id": "cd15a9a7-6232-42f0-bbfa-7c32f736dc8f",
+      "status": "not_decided",
+      "tokens_in": 41102,
+      "tokens_out": 449,
+      "llm_calls": 13,
+      "tool_calls": 12,
+      "findings": 3,
+      "cited_ocids": [
+        "ocds-5whusi-221618-KLB/RT/12/23-24",
+        "ocds-5whusi-222826-KLB/RT/21/2023-2024",
+        "ocds-5whusi-222828-KLB/RT/18/2023-2024",
+        "ocds-5whusi-245220-KLB/RT/11/24-25",
+        "ocds-5whusi-245225-KLB/RT/22/2024-2025",
+        "ocds-5whusi-KLB/RT/16/22-23",
+        "ocds-5whusi-KLB/RT/17/22-23",
+        "ocds-5whusi-KLB/RT/19/22-23"
+      ],
+      "free_ram_gb": 1.2,
+      "error": ""
+    },
+    {
+      "task": "E7R",
+      "repeat": 1,
+      "passed": true,
+      "checks": {
+        "both_hits_kept": true,
+        "every_single_process_hit_gets_lots_of_one_tender": true
+      },
+      "seconds": 250.2,
+      "run_id": "cf75712e-25b3-4e98-ae76-1a64774e138c",
+      "status": "not_decided",
+      "tokens_in": 41087,
+      "tokens_out": 449,
+      "llm_calls": 13,
+      "tool_calls": 12,
+      "findings": 3,
+      "cited_ocids": [
+        "ocds-5whusi-221618-KLB/RT/12/23-24",
+        "ocds-5whusi-222826-KLB/RT/21/2023-2024",
+        "ocds-5whusi-222828-KLB/RT/18/2023-2024",
+        "ocds-5whusi-245220-KLB/RT/11/24-25",
+        "ocds-5whusi-245225-KLB/RT/22/2024-2025",
+        "ocds-5whusi-KLB/RT/16/22-23",
+        "ocds-5whusi-KLB/RT/17/22-23",
+        "ocds-5whusi-KLB/RT/19/22-23"
+      ],
+      "free_ram_gb": 1.3,
+      "error": ""
+    },
+    {
+      "task": "E7R",
+      "repeat": 2,
+      "passed": true,
+      "checks": {
+        "both_hits_kept": true,
+        "every_single_process_hit_gets_lots_of_one_tender": true
+      },
+      "seconds": 239.3,
+      "run_id": "663dc677-56ed-47c4-9281-a66149108c8b",
+      "status": "not_decided",
+      "tokens_in": 41087,
+      "tokens_out": 449,
+      "llm_calls": 13,
+      "tool_calls": 12,
+      "findings": 3,
+      "cited_ocids": [
+        "ocds-5whusi-221618-KLB/RT/12/23-24",
+        "ocds-5whusi-222826-KLB/RT/21/2023-2024",
+        "ocds-5whusi-222828-KLB/RT/18/2023-2024",
+        "ocds-5whusi-245220-KLB/RT/11/24-25",
+        "ocds-5whusi-245225-KLB/RT/22/2024-2025",
+        "ocds-5whusi-KLB/RT/16/22-23",
+        "ocds-5whusi-KLB/RT/17/22-23",
+        "ocds-5whusi-KLB/RT/19/22-23"
+      ],
+      "free_ram_gb": 1.0,
+      "error": ""
+    },
+    {
+      "task": "E13",
+      "repeat": 1,
+      "passed": true,
+      "checks": {
+        "indicator_was_run": true,
+        "share_hit_kept": true,
+        "claim_copied_from_tool_output": true,
+        "severity_computed_in_code": true,
+        "most_specific_reason": true,
+        "log_verifies_and_is_complete": true
+      },
+      "seconds": 247.0,
+      "run_id": "f04b5beb-4a94-487a-8614-e5cd39cbb8e8",
+      "status": "not_decided",
+      "tokens_in": 41087,
+      "tokens_out": 454,
+      "llm_calls": 13,
+      "tool_calls": 12,
+      "findings": 3,
+      "cited_ocids": [
+        "ocds-5whusi-221618-KLB/RT/12/23-24",
+        "ocds-5whusi-222826-KLB/RT/21/2023-2024",
+        "ocds-5whusi-222828-KLB/RT/18/2023-2024",
+        "ocds-5whusi-245220-KLB/RT/11/24-25",
+        "ocds-5whusi-245225-KLB/RT/22/2024-2025",
+        "ocds-5whusi-KLB/RT/16/22-23",
+        "ocds-5whusi-KLB/RT/17/22-23",
+        "ocds-5whusi-KLB/RT/19/22-23"
+      ],
+      "free_ram_gb": 1.2,
+      "error": ""
+    },
+    {
+      "task": "E13",
+      "repeat": 2,
+      "passed": false,
+      "checks": {
+        "indicator_was_run": true,
+        "share_hit_kept": false,
+        "claim_copied_from_tool_output": false,
+        "severity_computed_in_code": false,
+        "most_specific_reason": false,
+        "log_verifies_and_is_complete": true
+      },
+      "seconds": 174.5,
+      "run_id": "c8810d48-ea49-485d-b1fc-4b8cec1eda9b",
+      "status": "not_decided",
+      "tokens_in": 22658,
+      "tokens_out": 306,
+      "llm_calls": 9,
+      "tool_calls": 8,
+      "findings": 1,
+      "cited_ocids": [
+        "ocds-5whusi-222828-KLB/RT/18/2023-2024"
+      ],
+      "free_ram_gb": 1.0,
+      "error": ""
+    }
+  ],
+  "summary": [
+    {
+      "task": "E1",
+      "title": "Known small buyer, full run (real data)",
+      "passes": 2,
+      "runs": 2,
+      "mean_seconds": 302.8,
+      "mean_tokens_in": 41104,
+      "overlap": 1.0,
+      "failing_checks": {},
+      "errors": []
+    },
+    {
+      "task": "E7R",
+      "title": "Triage on real data: the specific true reason",
+      "passes": 2,
+      "runs": 2,
+      "mean_seconds": 244.8,
+      "mean_tokens_in": 41087,
+      "overlap": 1.0,
+      "failing_checks": {},
+      "errors": []
+    },
+    {
+      "task": "E13",
+      "title": "Second indicator on real data (non-open methods)",
+      "passes": 1,
+      "runs": 2,
+      "mean_seconds": 210.8,
+      "mean_tokens_in": 31872,
+      "overlap": 0.125,
+      "failing_checks": {
+        "share_hit_kept": 1,
+        "claim_copied_from_tool_output": 1,
+        "severity_computed_in_code": 1,
+        "most_specific_reason": 1
+      },
+      "errors": []
+    }
+  ],
+  "baseline": [
+    {
+      "task": "E1",
+      "baseline_hits": 3,
+      "baseline_seconds": 0.38,
+      "baseline_model_calls": 0,
+      "agent_mean_seconds": 302.8,
+      "agent_findings": [
+        3,
+        3
+      ],
+      "agent_cited_same_records_as_baseline": [
+        true,
+        true
+      ]
+    },
+    {
+      "task": "E3",
+      "baseline_hits": 2,
+      "baseline_seconds": 0.02,
+      "baseline_model_calls": 0,
+      "agent_mean_seconds": null,
+      "agent_findings": [],
+      "agent_cited_same_records_as_baseline": []
+    }
+  ]
+}

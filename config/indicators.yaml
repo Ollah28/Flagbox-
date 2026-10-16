@@ -40,3 +40,20 @@ indicators:
       Severity is computed in code from the hit's own value share, never chosen by the model (SPEC D34):
       low below 25%, medium from 25%, high from 50% of the buyer's award value. These bands are an
       ASSUMPTION that orders a reviewer's reading list; they are not a finding about any supplier.
+
+  non_competitive_share:
+    methods: [direct, selective]
+    min_awards: 3
+    min_value_share: 0.25
+    max_ocids_per_hit: 8
+    severity_medium_value_share: 0.40
+    severity_high_value_share: 0.60
+    rationale: >
+      Chosen 16 Oct (SPEC D35) after measuring the 2023-2025 snapshot (docs/data_coverage.md). Of the
+      method values present, "open" is 94% of awards; "direct" and "selective" (restricted bidding)
+      are the non-open methods that matter. A buyer is listed when at least 3 awards used them and they
+      carry at least 25% of its award value. Among the 220 buyers with 50+ usable awards in range this
+      fires at 13 (6%); at 10% it fires at 31, at 40% at 6. Still an ASSUMPTION until checked against
+      the OCP red-flag guidance. Severity bands (low below 40%, medium from 40%, high from 60%) only
+      order a reading list; they are not a finding about any buyer. Direct and restricted awards are
+      lawful in set circumstances, so a hit means "look", never "wrong".

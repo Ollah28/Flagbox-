@@ -10,6 +10,6 @@
 
 **Why it can be trusted.** The model never writes a number, a name or an explanation: claims come from fixed templates inside our own MCP server, and the model only picks a hit, a severity and a reason from a closed list. Every tool call goes through one logging wrapper that writes a hash-chained log, so an edited log is detectable. The borrowed Filesystem MCP server is the only thing that can write to the filing folder, and only code, never the model, calls it. Personal data is dropped, supplier names are shown only for registered companies, and live tenders are excluded.
 
-**What it is not.** It never awards, recommends or accuses; its wording is "warrants review". It ships one indicator, `repeat_winner`, plus a registry that makes adding another a one-file change. Its thresholds have not been reviewed by a procurement practitioner, and the README lists its limits plainly.
+**What it is not.** It never awards, recommends or accuses; its wording is "warrants review". It ships one indicator, `repeat_winner` (a second, `non_competitive_share`, is on the `dev` branch), plus a registry that makes adding another a one-file change. Its thresholds have not been reviewed by a procurement practitioner, and the README lists its limits plainly.
 
 **Built with:** Python 3.12, LangGraph, the Model Context Protocol (our own server plus the borrowed Filesystem server), Ollama with Qwen3 8B, SQLite. Open source under the MIT licence.

@@ -17,6 +17,21 @@ Results: [evals/results/d34/](evals/results/d34/) and [evals/results/d34real/](e
 
 ---
 
+## Update 2: second indicator (`non_competitive_share`, SPEC D35)
+
+On real Kenya Literature Bureau data the buyer now has three hits: the two repeat winners and one non-open-methods share (74 of 453 awards, 95% of award value, by direct and selective methods). New task **E13** checks that the share hit is kept with its fixed claim, rated high by code and given the reason `direct_awards_present`. E7R now judges only the repeat-winner findings.
+
+| Task | Result (qwen3:8b, temperature 0) |
+|---|---|
+| E1 (real data, full run, 3 findings) | 2/2 |
+| E7R (specific reason on real data) | 2/2 |
+| E13 first batch | 1/2: **in one run the model re-recorded one hit over and over and never decided the other two**; the harness refused each repeat but gave no way forward |
+| E13 after the fix | 3/3 |
+
+The fix: when `record_finding` refuses a repeat it now names the hits still waiting for a decision (or says all are done). The re-run is a different sample on the same model, so it shows the change helps, not that the loop cannot happen. Runs took 3 to 6 minutes each with three hits. Results: [evals/results/d35real/](evals/results/d35real/) and [evals/results/d35b/](evals/results/d35b/).
+
+---
+
 ## How the tasks are judged
 
 Each task runs the real `flagbox run` code: the real model, our MCP server, the logging wrapper, the verifier, the memo and the human gate. A task passes only if **every** check passes, and every check reads what the run left on disk (its hash-chained log, the run-state database, the memo, the filing folder), never the model's own account of what it did. The code is in [evals/](evals/) and can be re-run:
