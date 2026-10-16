@@ -16,6 +16,10 @@ Kenya publishes hundreds of thousands of tenders and awards as open data. Audit 
 
 Built on the **data half** of the challenge: real award data (tenders and awards), not bid documents.
 
+## Target users
+
+Small audit and oversight units of Kenyan public bodies: county internal audit offices, county assembly oversight committees and ministry audit units. Each reviews one procuring entity at a time. Citizens and honest suppliers benefit indirectly from more transparent spending.
+
 ## What you see
 
 ```text
@@ -230,6 +234,17 @@ uv run pytest            # 339 tests; the ones that need Node skip if it is not 
 | `evals/` | model evaluation runner and fixtures |
 | `docs/` | spike results and the data coverage report |
 | [SPEC.md](SPEC.md), [PLAN.md](PLAN.md), [PROGRESS.md](PROGRESS.md) | design, plan, and where things stand |
+
+## Technology stack
+
+Python 3.12, LangGraph 1.2 (agent graph and human-gate checkpoints), Qwen3 8B through Ollama (`langchain-ollama`), the Model Context Protocol (`mcp` 1.30, `langchain-mcp-adapters`), the borrowed `@modelcontextprotocol/server-filesystem` (Node 20), SQLite, Jinja2, Pydantic. No external APIs. The agent graph, the two MCP servers and the logging wrapper are described in [ARCHITECTURE.md](ARCHITECTURE.md) and drawn in [docs/flagbox_architecture.png](docs/flagbox_architecture.png).
+
+## Future improvements
+
+- More indicators (single-bidder awards, values just under approval thresholds, supplier footprint across buyers) behind the existing one-file indicator registry.
+- Compute severity in code from each hit's own numbers, so text in a record cannot steer it (see the E9S failure in [EVALS.md](EVALS.md)).
+- Let code pick the most specific true reason by default (see E7R).
+- Three repeats, a hand-labelled accuracy check, and independent review by a procurement practitioner.
 
 ## Practitioner input
 
