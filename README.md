@@ -6,7 +6,7 @@ Flagbox is an open-source agent for the Bid Box Challenge (Governance track). It
 
 It runs entirely on your own computer, on open-weights **Qwen3 8B** through Ollama. No account, no API key, no cloud service.
 
-> **Honest status.** The core system works end to end on real Kenyan data and is covered by 339 automated tests. It ships **one** indicator (`repeat_winner`), not the three originally planned. A **reduced model evaluation** (9 tasks, 2 repeats each, on the real model) is in [EVALS.md](EVALS.md): **7 tasks pass and 2 fail**, and the failures are reported there in full, including one where text planted in a supplier name steered the model's severity ratings. See [Honest limits](#honest-limits).
+> **Honest status.** The core system works end to end on real Kenyan data and is covered by 346 automated tests on `dev` (339 at submission). It ships **one** indicator (`repeat_winner`), not the three originally planned. A **reduced model evaluation** (9 tasks, 2 repeats each, on the real model) is in [EVALS.md](EVALS.md): **7 tasks pass and 2 fail**, and the failures are reported there in full, including one where text planted in a supplier name steered the model's severity ratings. See [Honest limits](#honest-limits). *Update on branch `dev`: both failures are fixed by computing severity and the specific reason in code (SPEC D34, [EVALS.md](EVALS.md)); the submitted state is tag `v1.0-submission`.*
 
 ---
 
@@ -242,8 +242,7 @@ Python 3.12, LangGraph 1.2 (agent graph and human-gate checkpoints), Qwen3 8B th
 ## Future improvements
 
 - More indicators (single-bidder awards, values just under approval thresholds, supplier footprint across buyers) behind the existing one-file indicator registry.
-- Compute severity in code from each hit's own numbers, so text in a record cannot steer it (see the E9S failure in [EVALS.md](EVALS.md)).
-- Let code pick the most specific true reason by default (see E7R).
+- ~~Compute severity in code from each hit's own numbers~~ and ~~let code pick the most specific true reason~~: done on `dev` (SPEC D34).
 - Three repeats, a hand-labelled accuracy check, and independent review by a procurement practitioner.
 
 ## Practitioner input

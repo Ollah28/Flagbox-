@@ -1,3 +1,4 @@
+# ruff: noqa: E501
 """Draws docs/flagbox_architecture.png (the architecture diagram for the submission form)."""
 
 from pathlib import Path

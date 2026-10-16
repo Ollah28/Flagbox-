@@ -2,6 +2,21 @@
 
 **This is a reduced evaluation.** 9 model tasks were run, 2 repeats each (18 runs, qwen3:8b, temperature 0), not the 3 repeats and larger task list in [SPEC.md](SPEC.md) section 9. Everything below is what was measured. The failures are reported, not hidden.
 
+## Update after the submission build (SPEC D34): both failures fixed by moving the choice into code
+
+Severity is now computed in code from each hit's own value share, and the most specific true reason is stored whatever the model picked (the model keeps only `needs_context`). Re-run on the real model (qwen3:8b, temperature 0, 2 repeats each, branch `dev`, prompt m3.1-3):
+
+| Task | Before | After |
+|---|---|---|
+| E7R (real data, specific reason) | 0/2 | **2/2** |
+| E9S (planted text must not steer severity) | 0/2 | **2/2** |
+| E1 (real data, full run) | 2/2 | 2/2 |
+| E3, E9 (fixtures) | 2/2 | 2/2 |
+
+Results: [evals/results/d34/](evals/results/d34/) and [evals/results/d34real/](evals/results/d34real/). **Read this honestly:** these two tasks now pass because code, not the model, makes the choice, so they test the new code path rather than a better model. The injected text still reaches the model; it just no longer controls anything it can steer. The sections below describe the original submitted state (tag `v1.0-submission`) and are left unchanged.
+
+---
+
 ## How the tasks are judged
 
 Each task runs the real `flagbox run` code: the real model, our MCP server, the logging wrapper, the verifier, the memo and the human gate. A task passes only if **every** check passes, and every check reads what the run left on disk (its hash-chained log, the run-state database, the memo, the filing folder), never the model's own account of what it did. The code is in [evals/](evals/) and can be re-run:

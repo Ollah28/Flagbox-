@@ -57,6 +57,8 @@ class Params(IndicatorParams):
     min_value_share: float = Field(gt=0, le=1)
     max_hits: int = Field(ge=1)
     max_ocids_per_hit: int = Field(ge=1)
+    severity_medium_value_share: float = Field(gt=0, le=1)
+    severity_high_value_share: float = Field(gt=0, le=1)
 
 
 def _hit_id(ctx: Context, params: Params, supplier_key: str) -> str:
@@ -165,6 +167,14 @@ def run(ctx: Context, params: Params) -> dict[str, Any]:
                 "tender.tenderPeriod.endDate",
             ],
         }
+        share = value[key] / total_value
+        hit["severity"] = (
+            "high"
+            if share >= params.severity_high_value_share
+            else "medium"
+            if share >= params.severity_medium_value_share
+            else "low"
+        )
         hit["reason_codes"] = [r.code for r in REASONS if r.applies(hit)]
         hits.append(hit)
 

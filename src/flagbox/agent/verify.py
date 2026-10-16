@@ -287,9 +287,15 @@ def verify_finding(
             )
         )
 
-    clean_severity, bad_severity = check_severity(severity)
-    if bad_severity:
-        violations.append(bad_severity)
+    # SPEC D34: when the indicator computed a severity from the hit's own numbers, that value is
+    # used and the model's is ignored, so text inside a record cannot steer it.
+    computed = logged.hit.get("severity") if logged is not None else None
+    if isinstance(computed, str) and computed in SEVERITIES:
+        clean_severity: str | None = computed
+    else:
+        clean_severity, bad_severity = check_severity(severity)
+        if bad_severity:
+            violations.append(bad_severity)
 
     code = reason_code.strip() if isinstance(reason_code, str) else ""
     allowed = reasons_for(logged.hit) if logged is not None else {}
@@ -306,6 +312,10 @@ def verify_finding(
     if violations or logged is None:
         return Outcome(False, violations)
 
+    # SPEC D34: the model may only fall back to "needs_context". Otherwise the most specific true
+    # reason (the first one listed for the hit) is used, whatever the model picked.
+    if code != "needs_context":
+        code = next(iter(allowed))
     rationale = allowed[code]
     for problem in check_rationale(rationale):  # the fixed text must itself obey the wording rules
         violations.append(Violation("fixed_text", f"{code}: {problem.rule}"))

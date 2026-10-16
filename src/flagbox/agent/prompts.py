@@ -3,7 +3,7 @@
 Change a prompt => change PROMPT_VERSION. The version is written into every run's log.
 """
 
-PROMPT_VERSION = "m3.1-2"
+PROMPT_VERSION = "m3.1-3"
 
 SYSTEM = (
     "You are Flagbox, an assistant that helps a procurement oversight officer review public "

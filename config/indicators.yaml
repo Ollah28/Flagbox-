@@ -29,9 +29,14 @@ indicators:
     min_value_share: 0.10
     max_hits: 5
     max_ocids_per_hit: 8
+    severity_medium_value_share: 0.25
+    severity_high_value_share: 0.50
     rationale: >
       Decided 11 Oct (SPEC D23). A supplier is listed when it has at least 3 awards from the buyer and at
       least 10% of the buyer's award value in the date range. The SPEC placeholder of 30% fired at 1 of 240
       buyers with 50+ awards in the snapshot; 10% fires at 6 (docs/data_coverage.md), so it is the highest
       share that still gives the agent something to triage. Still an ASSUMPTION until checked against the
       OCP red-flag guidance. max_hits and max_ocids_per_hit only limit how much is shown to the model.
+      Severity is computed in code from the hit's own value share, never chosen by the model (SPEC D34):
+      low below 25%, medium from 25%, high from 50% of the buyer's award value. These bands are an
+      ASSUMPTION that orders a reviewer's reading list; they are not a finding about any supplier.
